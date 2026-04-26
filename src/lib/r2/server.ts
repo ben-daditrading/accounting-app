@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { createHash } from "node:crypto";
 
 function getRequiredEnv(name: string) {
@@ -61,5 +61,23 @@ export async function uploadReceiptToR2(params: {
     publicUrl: process.env.R2_PUBLIC_BASE_URL
       ? `${process.env.R2_PUBLIC_BASE_URL.replace(/\/$/, "")}/${objectKey}`
       : null,
+  };
+}
+
+export async function getReceiptFromR2(objectKey: string) {
+  const bucket = getRequiredEnv("R2_BUCKET");
+  const client = getClient();
+
+  const response = await client.send(
+    new GetObjectCommand({
+      Bucket: bucket,
+      Key: objectKey,
+    }),
+  );
+
+  return {
+    body: response.Body,
+    contentType: response.ContentType ?? "application/octet-stream",
+    contentLength: response.ContentLength,
   };
 }

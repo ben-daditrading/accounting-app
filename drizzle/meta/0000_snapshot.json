@@ -1,5 +1,5 @@
 {
-  "id": "a12449a1-e180-4d7b-acf5-65c8a23c2b2d",
+  "id": "4be9668c-2283-4f5a-b3a1-3c60975b16b6",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -8,39 +8,39 @@
       "name": "accounts",
       "schema": "",
       "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
+        "account_id": {
+          "name": "account_id",
+          "type": "serial",
           "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
+          "notNull": true
         },
-        "code": {
-          "name": "code",
-          "type": "varchar(32)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "name": {
-          "name": "name",
-          "type": "varchar(200)",
+        "account_number": {
+          "name": "account_number",
+          "type": "varchar(20)",
           "primaryKey": false,
           "notNull": true
         },
-        "account_class": {
-          "name": "account_class",
-          "type": "varchar(32)",
+        "account_name": {
+          "name": "account_name",
+          "type": "varchar(100)",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
-        "subtype": {
-          "name": "subtype",
-          "type": "varchar(64)",
+        "account_type": {
+          "name": "account_type",
+          "type": "varchar(20)",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
-        "active": {
-          "name": "active",
+        "currency": {
+          "name": "currency",
+          "type": "char(3)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'CAD'"
+        },
+        "is_active": {
+          "name": "is_active",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
@@ -51,28 +51,14 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
         }
       },
       "indexes": {
-        "accounts_name_unique_idx": {
-          "name": "accounts_name_unique_idx",
+        "accounts_account_number_unique_idx": {
+          "name": "accounts_account_number_unique_idx",
           "columns": [
             {
-              "expression": "name",
+              "expression": "account_number",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -88,161 +74,64 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.audit_log": {
-      "name": "audit_log",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "entity_type": {
-          "name": "entity_type",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "entity_id": {
-          "name": "entity_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "action": {
-          "name": "action",
-          "type": "varchar(32)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "actor": {
-          "name": "actor",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "before_json": {
-          "name": "before_json",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "after_json": {
-          "name": "after_json",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
+      "checkConstraints": {
+        "accounts_account_type_check": {
+          "name": "accounts_account_type_check",
+          "value": "\"accounts\".\"account_type\" IN ('asset','liability','equity','revenue','expense')"
         }
       },
-      "indexes": {
-        "audit_log_entity_type_idx": {
-          "name": "audit_log_entity_type_idx",
-          "columns": [
-            {
-              "expression": "entity_type",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "audit_log_entity_id_idx": {
-          "name": "audit_log_entity_id_idx",
-          "columns": [
-            {
-              "expression": "entity_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.journal_entries": {
-      "name": "journal_entries",
+    "public.journal_lines": {
+      "name": "journal_lines",
       "schema": "",
       "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
+        "line_id": {
+          "name": "line_id",
+          "type": "serial",
           "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
+          "notNull": true
         },
-        "transaction_id": {
-          "name": "transaction_id",
-          "type": "uuid",
+        "transact_id": {
+          "name": "transact_id",
+          "type": "varchar(30)",
           "primaryKey": false,
           "notNull": true
         },
-        "sort_order": {
-          "name": "sort_order",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "side": {
-          "name": "side",
-          "type": "varchar(2)",
+        "line_number": {
+          "name": "line_number",
+          "type": "smallint",
           "primaryKey": false,
           "notNull": true
         },
         "account_id": {
           "name": "account_id",
-          "type": "uuid",
+          "type": "integer",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
-        "raw_account_name": {
-          "name": "raw_account_name",
-          "type": "varchar(200)",
+        "dr_cr": {
+          "name": "dr_cr",
+          "type": "char(2)",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "amount": {
           "name": "amount",
-          "type": "numeric(14, 2)",
+          "type": "numeric(15, 2)",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
-        "currency_code": {
-          "name": "currency_code",
-          "type": "varchar(3)",
+        "currency": {
+          "name": "currency",
+          "type": "char(3)",
           "primaryKey": false,
           "notNull": true,
           "default": "'CAD'"
         },
-        "raw_amount_text": {
-          "name": "raw_amount_text",
-          "type": "text",
+        "amount_cad": {
+          "name": "amount_cad",
+          "type": "numeric(15, 2)",
           "primaryKey": false,
           "notNull": false
         },
@@ -251,21 +140,14 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
         }
       },
       "indexes": {
-        "journal_entries_transaction_id_idx": {
-          "name": "journal_entries_transaction_id_idx",
+        "idx_journal_lines_transact": {
+          "name": "idx_journal_lines_transact",
           "columns": [
             {
-              "expression": "transaction_id",
+              "expression": "transact_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -276,8 +158,8 @@
           "method": "btree",
           "with": {}
         },
-        "journal_entries_account_id_idx": {
-          "name": "journal_entries_account_id_idx",
+        "idx_journal_lines_account": {
+          "name": "idx_journal_lines_account",
           "columns": [
             {
               "expression": "account_id",
@@ -291,11 +173,11 @@
           "method": "btree",
           "with": {}
         },
-        "journal_entries_side_idx": {
-          "name": "journal_entries_side_idx",
+        "idx_journal_lines_dr_cr": {
+          "name": "idx_journal_lines_dr_cr",
           "columns": [
             {
-              "expression": "side",
+              "expression": "dr_cr",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -305,141 +187,18 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        }
-      },
-      "foreignKeys": {
-        "journal_entries_transaction_id_transactions_id_fk": {
-          "name": "journal_entries_transaction_id_transactions_id_fk",
-          "tableFrom": "journal_entries",
-          "tableTo": "transactions",
-          "columnsFrom": [
-            "transaction_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
         },
-        "journal_entries_account_id_accounts_id_fk": {
-          "name": "journal_entries_account_id_accounts_id_fk",
-          "tableFrom": "journal_entries",
-          "tableTo": "accounts",
-          "columnsFrom": [
-            "account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.receipts": {
-      "name": "receipts",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "transaction_id": {
-          "name": "transaction_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "storage_provider": {
-          "name": "storage_provider",
-          "type": "varchar(32)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'r2'"
-        },
-        "bucket": {
-          "name": "bucket",
-          "type": "varchar(120)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "object_key": {
-          "name": "object_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "file_name": {
-          "name": "file_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "mime_type": {
-          "name": "mime_type",
-          "type": "varchar(120)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "file_size_bytes": {
-          "name": "file_size_bytes",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "checksum_sha256": {
-          "name": "checksum_sha256",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "uploaded_by": {
-          "name": "uploaded_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "ocr_status": {
-          "name": "ocr_status",
-          "type": "varchar(32)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'not_started'"
-        },
-        "ocr_text": {
-          "name": "ocr_text",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "ocr_json": {
-          "name": "ocr_json",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "receipts_transaction_id_unique_idx": {
-          "name": "receipts_transaction_id_unique_idx",
+        "journal_lines_transact_line_unique_idx": {
+          "name": "journal_lines_transact_line_unique_idx",
           "columns": [
             {
-              "expression": "transaction_id",
+              "expression": "transact_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "line_number",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -452,112 +211,190 @@
         }
       },
       "foreignKeys": {
-        "receipts_transaction_id_transactions_id_fk": {
-          "name": "receipts_transaction_id_transactions_id_fk",
-          "tableFrom": "receipts",
+        "journal_lines_transact_id_transactions_transact_id_fk": {
+          "name": "journal_lines_transact_id_transactions_transact_id_fk",
+          "tableFrom": "journal_lines",
           "tableTo": "transactions",
           "columnsFrom": [
-            "transaction_id"
+            "transact_id"
           ],
           "columnsTo": [
-            "id"
+            "transact_id"
           ],
           "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "journal_lines_account_id_accounts_account_id_fk": {
+          "name": "journal_lines_account_id_accounts_account_id_fk",
+          "tableFrom": "journal_lines",
+          "tableTo": "accounts",
+          "columnsFrom": [
+            "account_id"
+          ],
+          "columnsTo": [
+            "account_id"
+          ],
+          "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "journal_lines_dr_cr_check": {
+          "name": "journal_lines_dr_cr_check",
+          "value": "\"journal_lines\".\"dr_cr\" IN ('DR','CR')"
+        },
+        "journal_lines_amount_check": {
+          "name": "journal_lines_amount_check",
+          "value": "\"journal_lines\".\"amount\" > 0"
+        }
+      },
       "isRLSEnabled": false
     },
-    "public.transaction_source_lines": {
-      "name": "transaction_source_lines",
+    "public.transaction_types": {
+      "name": "transaction_types",
       "schema": "",
       "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
+        "type_id": {
+          "name": "type_id",
+          "type": "serial",
           "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
+          "notNull": true
         },
-        "transaction_id": {
-          "name": "transaction_id",
-          "type": "uuid",
+        "type_name": {
+          "name": "type_name",
+          "type": "varchar(50)",
           "primaryKey": false,
           "notNull": true
         },
-        "sort_order": {
-          "name": "sort_order",
-          "type": "integer",
+        "description": {
+          "name": "description",
+          "type": "text",
           "primaryKey": false,
-          "notNull": true,
-          "default": 0
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "transaction_types_type_name_unique_idx": {
+          "name": "transaction_types_type_name_unique_idx",
+          "columns": [
+            {
+              "expression": "type_name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.transactions": {
+      "name": "transactions",
+      "schema": "",
+      "columns": {
+        "transact_id": {
+          "name": "transact_id",
+          "type": "varchar(30)",
+          "primaryKey": true,
+          "notNull": true
         },
-        "line_date": {
-          "name": "line_date",
+        "transact_date": {
+          "name": "transact_date",
           "type": "date",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
-        "line_type": {
-          "name": "line_type",
-          "type": "varchar(120)",
+        "type_id": {
+          "name": "type_id",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false
         },
-        "line_amount": {
-          "name": "line_amount",
-          "type": "numeric(14, 2)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "currency_code": {
-          "name": "currency_code",
-          "type": "varchar(3)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "line_description": {
-          "name": "line_description",
+        "description": {
+          "name": "description",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
-        "raw_amount_text": {
-          "name": "raw_amount_text",
-          "type": "text",
+        "total_amount": {
+          "name": "total_amount",
+          "type": "numeric(15, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "currency": {
+          "name": "currency",
+          "type": "char(3)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'CAD'"
+        },
+        "exchange_rate": {
+          "name": "exchange_rate",
+          "type": "numeric(10, 6)",
           "primaryKey": false,
           "notNull": false
         },
-        "raw_type_text": {
-          "name": "raw_type_text",
-          "type": "text",
+        "receipt_ref": {
+          "name": "receipt_ref",
+          "type": "varchar(100)",
           "primaryKey": false,
           "notNull": false
         },
-        "raw_description_text": {
-          "name": "raw_description_text",
+        "notes": {
+          "name": "notes",
           "type": "text",
           "primaryKey": false,
           "notNull": false
         },
         "created_at": {
           "name": "created_at",
-          "type": "timestamp with time zone",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
         }
       },
       "indexes": {
-        "transaction_source_lines_transaction_id_idx": {
-          "name": "transaction_source_lines_transaction_id_idx",
+        "idx_transactions_date": {
+          "name": "idx_transactions_date",
           "columns": [
             {
-              "expression": "transaction_id",
+              "expression": "transact_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_transactions_type": {
+          "name": "idx_transactions_type",
+          "columns": [
+            {
+              "expression": "type_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -570,179 +407,29 @@
         }
       },
       "foreignKeys": {
-        "transaction_source_lines_transaction_id_transactions_id_fk": {
-          "name": "transaction_source_lines_transaction_id_transactions_id_fk",
-          "tableFrom": "transaction_source_lines",
-          "tableTo": "transactions",
+        "transactions_type_id_transaction_types_type_id_fk": {
+          "name": "transactions_type_id_transaction_types_type_id_fk",
+          "tableFrom": "transactions",
+          "tableTo": "transaction_types",
           "columnsFrom": [
-            "transaction_id"
+            "type_id"
           ],
           "columnsTo": [
-            "id"
+            "type_id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.transactions": {
-      "name": "transactions",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "transaction_date": {
-          "name": "transaction_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "transaction_type": {
-          "name": "transaction_type",
-          "type": "varchar(120)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "summary_amount": {
-          "name": "summary_amount",
-          "type": "numeric(14, 2)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "currency_code": {
-          "name": "currency_code",
-          "type": "varchar(3)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'CAD'"
-        },
-        "summary_description": {
-          "name": "summary_description",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "receipt_date": {
-          "name": "receipt_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "status": {
-          "name": "status",
-          "type": "varchar(32)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'draft'"
-        },
-        "source": {
-          "name": "source",
-          "type": "varchar(32)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'manual'"
-        },
-        "notes": {
-          "name": "notes",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "legacy_import_ref": {
-          "name": "legacy_import_ref",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "updated_by": {
-          "name": "updated_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
+      "checkConstraints": {
+        "transactions_total_amount_check": {
+          "name": "transactions_total_amount_check",
+          "value": "\"transactions\".\"total_amount\" >= 0"
         }
       },
-      "indexes": {
-        "transactions_transaction_date_idx": {
-          "name": "transactions_transaction_date_idx",
-          "columns": [
-            {
-              "expression": "transaction_date",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "transactions_transaction_type_idx": {
-          "name": "transactions_transaction_type_idx",
-          "columns": [
-            {
-              "expression": "transaction_type",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "transactions_status_idx": {
-          "name": "transactions_status_idx",
-          "columns": [
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
       "isRLSEnabled": false
     }
   },

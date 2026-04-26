@@ -4,45 +4,43 @@ const moneyString = z
   .string()
   .trim()
   .min(1, "Amount is required")
-  .refine((value) => /^-?\d+(\.\d{1,2})?$/.test(value), "Use a numeric amount like 206.04");
+  .refine((value) => /^\d+(\.\d{1,2})?$/.test(value), "Use a positive numeric amount like 206.04");
 
-export const sourceLineSchema = z.object({
-  lineDate: z.string().optional(),
-  lineType: z.string().trim().optional(),
-  lineAmount: z.string().trim().optional(),
-  currencyCode: z.string().trim().length(3),
-  lineDescription: z.string().trim().optional(),
-});
-
-export const journalEntrySchema = z.object({
-  side: z.enum(["DR", "CR"]),
-  accountName: z.string().trim().min(1, "Account is required"),
+export const journalLineSchema = z.object({
+  accountId: z.number().int().positive("Account is required"),
+  drCr: z.enum(["DR", "CR"]),
   amount: moneyString,
-  currencyCode: z.string().trim().length(3),
+  currency: z.string().trim().length(3),
+  amountCad: z.string().trim().optional(),
   memo: z.string().trim().optional(),
 });
 
-export const transactionDraftSchema = z
+export const transactionInputSchema = z
   .object({
-    transactionDate: z.string().min(1, "Transaction date is required"),
-    transactionType: z.string().trim().min(1, "Transaction type is required"),
-    summaryAmount: z.string().trim().optional(),
-    currencyCode: z.string().trim().length(3),
-    summaryDescription: z.string().trim().optional(),
-    receiptDate: z.string().optional(),
+    transactId: z
+      .string()
+      .trim()
+      .min(1, "Transaction ID is required")
+      .max(30, "Transaction ID must be 30 characters or fewer"),
+    transactDate: z.string().min(1, "Transaction date is required"),
+    typeId: z.number().int().positive("Transaction type is required"),
+    description: z.string().trim().min(1, "Description is required"),
+    totalAmount: moneyString,
+    currency: z.string().trim().length(3),
+    exchangeRate: z.string().trim().optional(),
+    receiptRef: z.string().trim().optional(),
     notes: z.string().trim().optional(),
-    sourceLines: z.array(sourceLineSchema),
-    journalEntries: z.array(journalEntrySchema).min(2, "At least two journal entries are required"),
+    journalLines: z.array(journalLineSchema).min(2, "At least two journal lines are required"),
   })
   .superRefine((value, ctx) => {
-    const totals = value.journalEntries.reduce(
-      (acc, entry) => {
-        const numericAmount = Number(entry.amount);
+    const totals = value.journalLines.reduce(
+      (acc, line) => {
+        const numericAmount = Number(line.amount);
         if (Number.isNaN(numericAmount)) {
           return acc;
         }
 
-        if (entry.side === "DR") {
+        if (line.drCr === "DR") {
           acc.dr += numericAmount;
         } else {
           acc.cr += numericAmount;
@@ -57,9 +55,9 @@ export const transactionDraftSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "Debit and credit totals must balance",
-        path: ["journalEntries"],
+        path: ["journalLines"],
       });
     }
   });
 
-export type TransactionDraftInput = z.infer<typeof transactionDraftSchema>;
+export type TransactionInput = z.infer<typeof transactionInputSchema>;

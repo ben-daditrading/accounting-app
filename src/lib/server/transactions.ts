@@ -1,12 +1,10 @@
-import { desc, eq } from "drizzle-orm";
+import { asc, desc, eq, sql } from "drizzle-orm";
 
-import { isMeaningfulSourceLine, normalizeText, optionalAmount, optionalText } from "@/lib/accounting/normalize";
+import { normalizeText, optionalText } from "@/lib/accounting/normalize";
 import { getDb, schema } from "@/lib/db";
-import type { TransactionDraftInput } from "@/lib/validation/transaction";
+import type { TransactionInput } from "@/lib/validation/transaction";
 
-const { accounts, auditLog, journalEntries, receipts, transactionSourceLines, transactions } = schema;
-
-type AccountDbLike = Pick<ReturnType<typeof getDb>, "select" | "insert">;
+const { accounts, journalLines, transactionTypes, transactions } = schema;
 
 export async function listTransactions() {
   if (!process.env.DATABASE_URL) {
@@ -17,20 +15,64 @@ export async function listTransactions() {
   }
 
   const db = getDb();
-  const items = await db
+
+  // Fetch transactions with type names
+  const txRows = await db
     .select({
-      id: transactions.id,
-      transactionDate: transactions.transactionDate,
-      transactionType: transactions.transactionType,
-      summaryAmount: transactions.summaryAmount,
-      currencyCode: transactions.currencyCode,
-      summaryDescription: transactions.summaryDescription,
-      status: transactions.status,
+      transactId: transactions.transactId,
+      transactDate: transactions.transactDate,
+      typeId: transactions.typeId,
+      typeName: transactionTypes.typeName,
+      description: transactions.description,
+      totalAmount: transactions.totalAmount,
+      currency: transactions.currency,
+      receiptRef: transactions.receiptRef,
       createdAt: transactions.createdAt,
     })
     .from(transactions)
-    .orderBy(desc(transactions.transactionDate), desc(transactions.createdAt))
+    .leftJoin(transactionTypes, eq(transactions.typeId, transactionTypes.typeId))
+    .orderBy(desc(transactions.transactDate), desc(transactions.createdAt))
     .limit(100);
+
+  if (txRows.length === 0) {
+    return { mode: "database" as const, items: [] };
+  }
+
+  // Fetch journal lines for those transactions
+  const txIds = txRows.map((t) => t.transactId);
+  const lineRows = await db
+    .select({
+      transactId: journalLines.transactId,
+      lineNumber: journalLines.lineNumber,
+      drCr: journalLines.drCr,
+      amount: journalLines.amount,
+      currency: journalLines.currency,
+      amountCad: journalLines.amountCad,
+      accountId: journalLines.accountId,
+      accountName: accounts.accountName,
+      memo: journalLines.memo,
+    })
+    .from(journalLines)
+    .leftJoin(accounts, eq(journalLines.accountId, accounts.accountId))
+    .where(
+      txIds.length === 1
+        ? eq(journalLines.transactId, txIds[0])
+        : sql`${journalLines.transactId} IN (${sql.join(txIds.map((id) => sql`${id}`), sql`, `)})`
+    )
+    .orderBy(asc(journalLines.lineNumber));
+
+  // Group lines by transaction
+  const linesByTx = new Map<string, typeof lineRows>();
+  for (const line of lineRows) {
+    const arr = linesByTx.get(line.transactId) ?? [];
+    arr.push(line);
+    linesByTx.set(line.transactId, arr);
+  }
+
+  const items = txRows.map((tx) => ({
+    ...tx,
+    lines: linesByTx.get(tx.transactId) ?? [],
+  }));
 
   return {
     mode: "database" as const,
@@ -38,153 +80,70 @@ export async function listTransactions() {
   };
 }
 
-async function getOrCreateAccountId(db: AccountDbLike, accountName: string) {
-  const normalizedName = normalizeText(accountName);
-
-  const existing = await db.select({ id: accounts.id }).from(accounts).where(eq(accounts.name, normalizedName)).limit(1);
-  if (existing[0]?.id) {
-    return existing[0].id;
+export async function listAccounts() {
+  if (!process.env.DATABASE_URL) {
+    return [];
   }
 
-  const inserted = await db
-    .insert(accounts)
-    .values({
-      name: normalizedName,
-      active: true,
+  const db = getDb();
+  return db
+    .select({
+      accountId: accounts.accountId,
+      accountNumber: accounts.accountNumber,
+      accountName: accounts.accountName,
+      accountType: accounts.accountType,
+      currency: accounts.currency,
     })
-    .returning({ id: accounts.id });
-
-  return inserted[0].id;
+    .from(accounts)
+    .where(eq(accounts.isActive, true))
+    .orderBy(accounts.accountName);
 }
 
-export async function createTransactionDraft(input: TransactionDraftInput, actor = "system") {
+export async function listTransactionTypes() {
+  if (!process.env.DATABASE_URL) {
+    return [];
+  }
+
+  const db = getDb();
+  return db
+    .select({
+      typeId: transactionTypes.typeId,
+      typeName: transactionTypes.typeName,
+      description: transactionTypes.description,
+    })
+    .from(transactionTypes)
+    .orderBy(transactionTypes.typeName);
+}
+
+export async function createTransaction(input: TransactionInput, _actor = "system") {
   const db = getDb();
 
   return db.transaction(async (tx) => {
-    const insertedTransactions = await tx
-      .insert(transactions)
-      .values({
-        transactionDate: input.transactionDate,
-        transactionType: normalizeText(input.transactionType),
-        summaryAmount: optionalAmount(input.summaryAmount),
-        currencyCode: normalizeText(input.currencyCode),
-        summaryDescription: optionalText(input.summaryDescription),
-        receiptDate: optionalText(input.receiptDate),
-        notes: optionalText(input.notes),
-        status: "draft",
-        source: "manual",
-        createdBy: actor,
-        updatedBy: actor,
-      })
-      .returning({ id: transactions.id });
-
-    const transactionId = insertedTransactions[0].id;
-
-    const sourceLineValues = input.sourceLines
-      .filter(isMeaningfulSourceLine)
-      .map((line, index) => ({
-        transactionId,
-        sortOrder: index,
-        lineDate: optionalText(line.lineDate),
-        lineType: optionalText(line.lineType),
-        lineAmount: optionalAmount(line.lineAmount),
-        currencyCode: normalizeText(line.currencyCode),
-        lineDescription: optionalText(line.lineDescription),
-        rawAmountText: optionalText(line.lineAmount),
-        rawTypeText: optionalText(line.lineType),
-        rawDescriptionText: optionalText(line.lineDescription),
-      }));
-
-    if (sourceLineValues.length > 0) {
-      await tx.insert(transactionSourceLines).values(sourceLineValues);
-    }
-
-    const journalEntryValues = [] as Array<{
-      transactionId: string;
-      sortOrder: number;
-      side: "DR" | "CR";
-      accountId: string;
-      rawAccountName: string;
-      amount: string;
-      currencyCode: string;
-      rawAmountText: string;
-      memo: string | null;
-    }>;
-
-    for (const [index, entry] of input.journalEntries.entries()) {
-      const accountId = await getOrCreateAccountId(tx, entry.accountName);
-      journalEntryValues.push({
-        transactionId,
-        sortOrder: index,
-        side: entry.side,
-        accountId,
-        rawAccountName: normalizeText(entry.accountName),
-        amount: normalizeText(entry.amount),
-        currencyCode: normalizeText(entry.currencyCode),
-        rawAmountText: normalizeText(entry.amount),
-        memo: optionalText(entry.memo),
-      });
-    }
-
-    await tx.insert(journalEntries).values(journalEntryValues);
-
-    await tx.insert(auditLog).values({
-      entityType: "transaction",
-      entityId: transactionId,
-      action: "create",
-      actor,
-      beforeJson: null,
-      afterJson: {
-        transactionDate: input.transactionDate,
-        transactionType: input.transactionType,
-        currencyCode: input.currencyCode,
-        summaryAmount: input.summaryAmount || null,
-        summaryDescription: input.summaryDescription || null,
-        sourceLineCount: sourceLineValues.length,
-        journalEntryCount: journalEntryValues.length,
-      },
+    await tx.insert(transactions).values({
+      transactId: normalizeText(input.transactId),
+      transactDate: input.transactDate,
+      typeId: input.typeId,
+      description: normalizeText(input.description),
+      totalAmount: input.totalAmount,
+      currency: normalizeText(input.currency),
+      exchangeRate: optionalText(input.exchangeRate),
+      receiptRef: optionalText(input.receiptRef),
+      notes: optionalText(input.notes),
     });
 
-    return { transactionId };
-  });
-}
+    const journalLineValues = input.journalLines.map((line, index) => ({
+      transactId: normalizeText(input.transactId),
+      lineNumber: index + 1,
+      accountId: line.accountId,
+      drCr: line.drCr,
+      amount: line.amount,
+      currency: normalizeText(line.currency),
+      amountCad: optionalText(line.amountCad),
+      memo: optionalText(line.memo),
+    }));
 
-export async function attachReceiptToTransaction(
-  params: {
-    transactionId: string;
-    bucket: string;
-    objectKey: string;
-    fileName: string;
-    mimeType?: string | null;
-    fileSizeBytes?: number | null;
-    checksumSha256?: string | null;
-  },
-  actor = "system",
-) {
-  const db = getDb();
+    await tx.insert(journalLines).values(journalLineValues);
 
-  await db.insert(receipts).values({
-    transactionId: params.transactionId,
-    bucket: params.bucket,
-    objectKey: params.objectKey,
-    fileName: params.fileName,
-    mimeType: params.mimeType ?? null,
-    fileSizeBytes: params.fileSizeBytes ?? null,
-    checksumSha256: params.checksumSha256 ?? null,
-    uploadedBy: actor,
-  });
-
-  await db.insert(auditLog).values({
-    entityType: "receipt",
-    entityId: params.transactionId,
-    action: "upload",
-    actor,
-    beforeJson: null,
-    afterJson: {
-      transactionId: params.transactionId,
-      bucket: params.bucket,
-      objectKey: params.objectKey,
-      fileName: params.fileName,
-    },
+    return { transactId: input.transactId };
   });
 }

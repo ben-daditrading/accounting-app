@@ -1,145 +1,99 @@
 import {
   boolean,
+  char,
+  check,
   date,
   index,
   integer,
-  jsonb,
   numeric,
   pgTable,
+  serial,
+  smallint,
   text,
   timestamp,
   uniqueIndex,
-  uuid,
   varchar,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
-const timestamps = {
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-};
-
-export const transactions = pgTable(
-  "transactions",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    transactionDate: date("transaction_date").notNull(),
-    transactionType: varchar("transaction_type", { length: 120 }).notNull(),
-    summaryAmount: numeric("summary_amount", { precision: 14, scale: 2 }),
-    currencyCode: varchar("currency_code", { length: 3 }).default("CAD").notNull(),
-    summaryDescription: text("summary_description"),
-    receiptDate: date("receipt_date"),
-    status: varchar("status", { length: 32 }).default("draft").notNull(),
-    source: varchar("source", { length: 32 }).default("manual").notNull(),
-    notes: text("notes"),
-    legacyImportRef: text("legacy_import_ref"),
-    createdBy: text("created_by"),
-    updatedBy: text("updated_by"),
-    ...timestamps,
-  },
-  (table) => [
-    index("transactions_transaction_date_idx").on(table.transactionDate),
-    index("transactions_transaction_type_idx").on(table.transactionType),
-    index("transactions_status_idx").on(table.status),
-  ],
-);
-
-export const transactionSourceLines = pgTable(
-  "transaction_source_lines",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    transactionId: uuid("transaction_id")
-      .notNull()
-      .references(() => transactions.id, { onDelete: "cascade" }),
-    sortOrder: integer("sort_order").default(0).notNull(),
-    lineDate: date("line_date"),
-    lineType: varchar("line_type", { length: 120 }),
-    lineAmount: numeric("line_amount", { precision: 14, scale: 2 }),
-    currencyCode: varchar("currency_code", { length: 3 }),
-    lineDescription: text("line_description"),
-    rawAmountText: text("raw_amount_text"),
-    rawTypeText: text("raw_type_text"),
-    rawDescriptionText: text("raw_description_text"),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  },
-  (table) => [index("transaction_source_lines_transaction_id_idx").on(table.transactionId)],
-);
+// -- SUPPORTING LOOKUP TABLES --
 
 export const accounts = pgTable(
   "accounts",
   {
-    id: uuid("id").defaultRandom().primaryKey(),
-    code: varchar("code", { length: 32 }),
-    name: varchar("name", { length: 200 }).notNull(),
-    accountClass: varchar("account_class", { length: 32 }),
-    subtype: varchar("subtype", { length: 64 }),
-    active: boolean("active").default(true).notNull(),
+    accountId: serial("account_id").primaryKey(),
+    accountNumber: varchar("account_number", { length: 20 }).notNull(),
+    accountName: varchar("account_name", { length: 100 }).notNull(),
+    accountType: varchar("account_type", { length: 20 }).notNull(),
+    currency: char("currency", { length: 3 }).default("CAD").notNull(),
+    isActive: boolean("is_active").default(true).notNull(),
     notes: text("notes"),
-    ...timestamps,
-  },
-  (table) => [uniqueIndex("accounts_name_unique_idx").on(table.name)],
-);
-
-export const journalEntries = pgTable(
-  "journal_entries",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    transactionId: uuid("transaction_id")
-      .notNull()
-      .references(() => transactions.id, { onDelete: "cascade" }),
-    sortOrder: integer("sort_order").default(0).notNull(),
-    side: varchar("side", { length: 2 }).notNull(),
-    accountId: uuid("account_id").references(() => accounts.id, { onDelete: "set null" }),
-    rawAccountName: varchar("raw_account_name", { length: 200 }),
-    amount: numeric("amount", { precision: 14, scale: 2 }),
-    currencyCode: varchar("currency_code", { length: 3 }).default("CAD").notNull(),
-    rawAmountText: text("raw_amount_text"),
-    memo: text("memo"),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
-    index("journal_entries_transaction_id_idx").on(table.transactionId),
-    index("journal_entries_account_id_idx").on(table.accountId),
-    index("journal_entries_side_idx").on(table.side),
+    uniqueIndex("accounts_account_number_unique_idx").on(table.accountNumber),
+    check("accounts_account_type_check", sql`${table.accountType} IN ('asset','liability','equity','revenue','expense')`),
   ],
 );
 
-export const receipts = pgTable(
-  "receipts",
+export const transactionTypes = pgTable(
+  "transaction_types",
   {
-    id: uuid("id").defaultRandom().primaryKey(),
-    transactionId: uuid("transaction_id")
-      .notNull()
-      .references(() => transactions.id, { onDelete: "cascade" }),
-    storageProvider: varchar("storage_provider", { length: 32 }).default("r2").notNull(),
-    bucket: varchar("bucket", { length: 120 }).notNull(),
-    objectKey: text("object_key").notNull(),
-    fileName: text("file_name").notNull(),
-    mimeType: varchar("mime_type", { length: 120 }),
-    fileSizeBytes: integer("file_size_bytes"),
-    checksumSha256: text("checksum_sha256"),
-    uploadedBy: text("uploaded_by"),
-    ocrStatus: varchar("ocr_status", { length: 32 }).default("not_started").notNull(),
-    ocrText: text("ocr_text"),
-    ocrJson: jsonb("ocr_json"),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    typeId: serial("type_id").primaryKey(),
+    typeName: varchar("type_name", { length: 50 }).notNull(),
+    description: text("description"),
   },
-  (table) => [uniqueIndex("receipts_transaction_id_unique_idx").on(table.transactionId)],
+  (table) => [uniqueIndex("transaction_types_type_name_unique_idx").on(table.typeName)],
 );
 
-export const auditLog = pgTable(
-  "audit_log",
+// -- TABLE 1: TRANSACTION HEADERS --
+
+export const transactions = pgTable(
+  "transactions",
   {
-    id: uuid("id").defaultRandom().primaryKey(),
-    entityType: varchar("entity_type", { length: 64 }).notNull(),
-    entityId: uuid("entity_id").notNull(),
-    action: varchar("action", { length: 32 }).notNull(),
-    actor: text("actor"),
-    beforeJson: jsonb("before_json"),
-    afterJson: jsonb("after_json"),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    transactId: varchar("transact_id", { length: 30 }).primaryKey(),
+    transactDate: date("transact_date").notNull(),
+    typeId: integer("type_id").references(() => transactionTypes.typeId),
+    description: text("description").notNull(),
+    totalAmount: numeric("total_amount", { precision: 15, scale: 2 }).notNull(),
+    currency: char("currency", { length: 3 }).default("CAD").notNull(),
+    exchangeRate: numeric("exchange_rate", { precision: 10, scale: 6 }),
+    receiptRef: varchar("receipt_ref", { length: 100 }),
+    notes: text("notes"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => [
-    index("audit_log_entity_type_idx").on(table.entityType),
-    index("audit_log_entity_id_idx").on(table.entityId),
+    index("idx_transactions_date").on(table.transactDate),
+    index("idx_transactions_type").on(table.typeId),
+    check("transactions_total_amount_check", sql`${table.totalAmount} >= 0`),
+  ],
+);
+
+// -- TABLE 2: JOURNAL LINES --
+
+export const journalLines = pgTable(
+  "journal_lines",
+  {
+    lineId: serial("line_id").primaryKey(),
+    transactId: varchar("transact_id", { length: 30 })
+      .notNull()
+      .references(() => transactions.transactId, { onDelete: "cascade" }),
+    lineNumber: smallint("line_number").notNull(),
+    accountId: integer("account_id")
+      .notNull()
+      .references(() => accounts.accountId),
+    drCr: char("dr_cr", { length: 2 }).notNull(),
+    amount: numeric("amount", { precision: 15, scale: 2 }).notNull(),
+    currency: char("currency", { length: 3 }).default("CAD").notNull(),
+    amountCad: numeric("amount_cad", { precision: 15, scale: 2 }),
+    memo: text("memo"),
+  },
+  (table) => [
+    index("idx_journal_lines_transact").on(table.transactId),
+    index("idx_journal_lines_account").on(table.accountId),
+    index("idx_journal_lines_dr_cr").on(table.drCr),
+    uniqueIndex("journal_lines_transact_line_unique_idx").on(table.transactId, table.lineNumber),
+    check("journal_lines_dr_cr_check", sql`${table.drCr} IN ('DR','CR')`),
+    check("journal_lines_amount_check", sql`${table.amount} > 0`),
   ],
 );

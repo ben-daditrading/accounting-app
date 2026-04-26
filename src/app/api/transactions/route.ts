@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { getAuthorizedUser } from "@/lib/auth/access";
-import { createTransactionDraft, listTransactions } from "@/lib/server/transactions";
-import { transactionDraftSchema } from "@/lib/validation/transaction";
+import { createTransaction, listTransactions } from "@/lib/server/transactions";
+import { transactionInputSchema } from "@/lib/validation/transaction";
 
 export async function GET() {
   try {
@@ -40,7 +40,7 @@ export async function POST(request: Request) {
     }
 
     const payload = await request.json();
-    const parsed = transactionDraftSchema.safeParse(payload);
+    const parsed = transactionInputSchema.safeParse(payload);
 
     if (!parsed.success) {
       return NextResponse.json(
@@ -52,7 +52,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const result = await createTransactionDraft(parsed.data, user.email ?? "system");
+    const result = await createTransaction(parsed.data, user.email ?? "system");
     return NextResponse.json(result, { status: 201 });
   } catch (error) {
     console.error("Failed to create transaction", error);

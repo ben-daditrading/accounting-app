@@ -15,9 +15,10 @@ const { receiptBatches, receiptBatchItems, transactions } = schema;
 const SUPPORTED_EXTENSIONS = new Set([".pdf", ".png", ".jpg", ".jpeg", ".webp"]);
 const PROCESSING_CONCURRENCY = Number(process.env.RECEIPT_BATCH_CONCURRENCY ?? "5");
 const OCR_PROVIDER = process.env.RECEIPT_OCR_PROVIDER?.toLowerCase() ?? "openai";
-const OPENAI_MODEL = process.env.RECEIPT_OCR_OPENAI_MODEL ?? "gpt-5.4-mini";
+const OPENAI_MODEL = process.env.RECEIPT_OCR_OPENAI_MODEL ?? "gpt-5.5";
 const OPENAI_LOW_CONFIDENCE_MODEL = process.env.RECEIPT_OCR_OPENAI_LOW_CONFIDENCE_MODEL ?? "gpt-5.5";
-const OPENAI_MAX_OUTPUT_TOKENS = Number(process.env.RECEIPT_OCR_OPENAI_MAX_OUTPUT_TOKENS ?? "1200");
+const OPENAI_MAX_OUTPUT_TOKENS = Number(process.env.RECEIPT_OCR_OPENAI_MAX_OUTPUT_TOKENS ?? "3000");
+const OPENAI_PARSE_RETRY_MAX_OUTPUT_TOKENS = Number(process.env.RECEIPT_OCR_OPENAI_PARSE_RETRY_MAX_OUTPUT_TOKENS ?? "5000");
 
 type StoredUpload = {
   name: string;
@@ -170,12 +171,19 @@ function fileStem(name: string) {
 }
 
 function parseJsonFromText(text: string) {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    throw new Error("OCR model returned empty output");
+  }
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const candidate = fenced?.[1] ?? text;
+  const candidate = (fenced?.[1] ?? trimmed).trim();
   const start = candidate.indexOf("{");
   const end = candidate.lastIndexOf("}");
   if (start >= 0 && end > start) {
     return JSON.parse(candidate.slice(start, end + 1));
+  }
+  if (start >= 0 && end === -1) {
+    throw new Error("OCR JSON output appears truncated before the closing brace");
   }
   return JSON.parse(candidate);
 }
@@ -211,10 +219,10 @@ function makeOcrPrompt(fileName: string) {
 }
 
 async function extractWithOpenAI(file: StoredUpload) {
-  return extractWithOpenAIModel(file, OPENAI_MODEL);
+  return extractWithOpenAIModel(file, OPENAI_MODEL, OPENAI_MAX_OUTPUT_TOKENS);
 }
 
-async function extractWithOpenAIModel(file: StoredUpload, model: string) {
+async function extractWithOpenAIModel(file: StoredUpload, model: string, maxOutputTokens: number) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("OPENAI_API_KEY is not configured.");
 
@@ -243,7 +251,7 @@ async function extractWithOpenAIModel(file: StoredUpload, model: string) {
     },
     body: JSON.stringify({
       model,
-      max_output_tokens: OPENAI_MAX_OUTPUT_TOKENS,
+      max_output_tokens: maxOutputTokens,
       input: [
         {
           role: "user",
@@ -259,7 +267,19 @@ async function extractWithOpenAIModel(file: StoredUpload, model: string) {
 
   const payload = await response.json();
   const text = payload?.output_text ?? payload?.output?.[0]?.content?.[0]?.text ?? "";
-  const json = parseJsonFromText(text) as OcrExtraction;
+  const incompleteReason = payload?.incomplete_details?.reason ?? payload?.status;
+
+  let json: OcrExtraction;
+  try {
+    json = parseJsonFromText(text) as OcrExtraction;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to parse OCR JSON";
+    const canRetryForParse = maxOutputTokens < OPENAI_PARSE_RETRY_MAX_OUTPUT_TOKENS;
+    if (canRetryForParse) {
+      return extractWithOpenAIModel(file, model, OPENAI_PARSE_RETRY_MAX_OUTPUT_TOKENS);
+    }
+    throw new Error(`${message}. Model status: ${incompleteReason ?? "unknown"}`);
+  }
 
   return {
     provider: "openai",
@@ -281,7 +301,7 @@ async function extractReceipt(file: StoredUpload) {
   if (OCR_PROVIDER === "openai") {
     const firstPass = await extractWithOpenAI(file);
     if (firstPass.model !== OPENAI_LOW_CONFIDENCE_MODEL && shouldRetryLowConfidence(firstPass.extraction)) {
-      return extractWithOpenAIModel(file, OPENAI_LOW_CONFIDENCE_MODEL);
+      return extractWithOpenAIModel(file, OPENAI_LOW_CONFIDENCE_MODEL, OPENAI_MAX_OUTPUT_TOKENS);
     }
     return firstPass;
   }
@@ -289,7 +309,7 @@ async function extractReceipt(file: StoredUpload) {
   if (process.env.OPENAI_API_KEY) {
     const firstPass = await extractWithOpenAI(file);
     if (firstPass.model !== OPENAI_LOW_CONFIDENCE_MODEL && shouldRetryLowConfidence(firstPass.extraction)) {
-      return extractWithOpenAIModel(file, OPENAI_LOW_CONFIDENCE_MODEL);
+      return extractWithOpenAIModel(file, OPENAI_LOW_CONFIDENCE_MODEL, OPENAI_MAX_OUTPUT_TOKENS);
     }
     return firstPass;
   }

@@ -220,6 +220,24 @@ async function extractWithOpenAI(file: StoredUpload) {
   return extractWithOpenAIModel(file, OPENAI_MODEL, OPENAI_MAX_OUTPUT_TOKENS);
 }
 
+function getOpenAIOutputText(payload: any) {
+  if (typeof payload?.output_text === "string" && payload.output_text.trim()) {
+    return payload.output_text;
+  }
+
+  const parts = Array.isArray(payload?.output)
+    ? payload.output.flatMap((item: any) =>
+        Array.isArray(item?.content)
+          ? item.content
+              .filter((part: any) => part?.type === "output_text" && typeof part?.text === "string")
+              .map((part: any) => part.text)
+          : [],
+      )
+    : [];
+
+  return parts.join("\n").trim();
+}
+
 async function extractWithOpenAIModel(file: StoredUpload, model: string, maxOutputTokens: number) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("OPENAI_API_KEY is not configured.");
@@ -264,7 +282,7 @@ async function extractWithOpenAIModel(file: StoredUpload, model: string, maxOutp
   }
 
   const payload = await response.json();
-  const text = payload?.output_text ?? payload?.output?.[0]?.content?.[0]?.text ?? "";
+  const text = getOpenAIOutputText(payload);
   const incompleteReason = payload?.incomplete_details?.reason ?? payload?.status;
 
   let json: OcrExtraction;

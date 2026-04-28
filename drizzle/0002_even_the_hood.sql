@@ -1,0 +1,1 @@
+ALTER TABLE "transactions" ALTER COLUMN "receipt_ref" SET DATA TYPE varchar(255);

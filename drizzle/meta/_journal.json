@@ -15,6 +15,13 @@
       "when": 1777350212429,
       "tag": "0001_thick_lethal_legion",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1777364155432,
+      "tag": "0002_even_the_hood",
+      "breakpoints": true
     }
   ]
 }

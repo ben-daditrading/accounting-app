@@ -60,7 +60,7 @@ export const transactions = pgTable(
     totalAmount: numeric("total_amount", { precision: 15, scale: 2 }).notNull(),
     currency: char("currency", { length: 3 }).default("CAD").notNull(),
     exchangeRate: numeric("exchange_rate", { precision: 10, scale: 6 }),
-    receiptRef: varchar("receipt_ref", { length: 100 }),
+    receiptRef: varchar("receipt_ref", { length: 255 }),
     notes: text("notes"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),

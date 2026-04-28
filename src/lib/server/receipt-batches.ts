@@ -872,14 +872,14 @@ export async function createReceiptBatch(params: {
 
 export async function updateReceiptBatchItem(itemId: string, input: UpdateBatchItemInput) {
   const db = getDb();
-  const parsed = transactionInputSchema.safeParse(input.transaction);
-  if (!parsed.success) {
-    throw new Error("Validation failed for edited transaction.");
-  }
-
   const nextStatus = input.status ?? "needs_review";
   if (!["ready", "needs_review", "deleted"].includes(nextStatus)) {
     throw new Error("Unsupported item status update.");
+  }
+
+  const parsed = input.transaction == null ? null : transactionInputSchema.safeParse(input.transaction);
+  if (nextStatus !== "deleted" && !parsed?.success) {
+    throw new Error("Validation failed for edited transaction.");
   }
 
   const warnings: string[] = [];
@@ -890,7 +890,7 @@ export async function updateReceiptBatchItem(itemId: string, input: UpdateBatchI
   await db
     .update(receiptBatchItems)
     .set({
-      editedTransactionJson: parsed.data,
+      editedTransactionJson: nextStatus === "deleted" ? sql`${receiptBatchItems.editedTransactionJson}` : parsed?.data,
       status: nextStatus,
       colorState: deriveColor(nextStatus),
       confidenceReason: nextStatus === "ready" ? "Manually reviewed and marked ready" : "Needs human review",
@@ -905,7 +905,7 @@ export async function updateReceiptBatchItem(itemId: string, input: UpdateBatchI
   if (!updated) throw new Error("Receipt batch item not found.");
 
   if (readyAllowed) {
-    transactionInputSchema.parse(parsed.data);
+    transactionInputSchema.parse(parsed?.data);
   }
 
   await recalculateBatchCounts(updated.batchId);

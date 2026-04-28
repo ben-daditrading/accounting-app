@@ -167,7 +167,7 @@ export function BatchReceiptImport() {
 
   async function saveItem(item: BatchItem, status: "ready" | "needs_review" | "deleted") {
     const transaction = item.editedTransactionJson ?? item.proposedTransactionJson;
-    if (!transaction) {
+    if (status !== "deleted" && !transaction) {
       setError(`No editable transaction payload exists for ${item.sourceFileName}`);
       return;
     }

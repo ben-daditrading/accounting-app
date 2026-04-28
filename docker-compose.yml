@@ -10,6 +10,7 @@ services:
     container_name: accounting-app
     restart: unless-stopped
     env_file:
+      - .env
       - .env.local
     environment:
       PORT: "3000"

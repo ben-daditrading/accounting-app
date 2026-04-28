@@ -36,6 +36,7 @@ type BatchItem = {
   confidenceScore: string;
   confidenceReason: string | null;
   ocrRawText: string | null;
+  ocrJson: { merchant?: string | null; [key: string]: unknown } | null;
   duplicateMatchesJson: Array<{ transactId: string; description: string; transactDate: string; totalAmount: string }> | null;
   proposedTransactionJson: TransactionInput | null;
   editedTransactionJson: TransactionInput | null;
@@ -358,14 +359,9 @@ export function BatchReceiptImport() {
                             <td className="px-2 py-2 min-w-[180px]">
                               <input
                                 className={input}
-                                value={tx?.description?.split(" receipt")[0] ?? tx?.description ?? ""}
-                                onChange={(event) =>
-                                  updateTransactionField(item.itemId, (transaction) => ({
-                                    ...transaction,
-                                    description: event.target.value,
-                                    notes: transaction.notes,
-                                  }))
-                                }
+                                value={item.ocrJson?.merchant ?? ""}
+                                readOnly
+                                title="Merchant name from OCR (read-only)"
                               />
                             </td>
                             <td className="px-2 py-2 min-w-[120px]">

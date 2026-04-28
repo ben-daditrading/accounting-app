@@ -196,6 +196,10 @@ function makeOcrPrompt(fileName: string) {
     "Do not invent values. Use null for unknown fields.",
     "Use ISO date format YYYY-MM-DD when possible.",
     "Provide numeric money fields as strings with 2 decimals when visible.",
+    "merchant means the vendor, store, restaurant, or payee name, not a purchased item or menu/product description.",
+    "description should contain the purchased item, short purpose, or receipt summary, not the vendor name unless no better description is visible.",
+    "If the receipt shows only a dollar sign ($) and does not explicitly say USD or another currency, default currency to CAD.",
+    "Keep confidenceReason and warnings concise.",
     `Source file: ${fileName}`,
     "JSON shape:",
     JSON.stringify({
@@ -233,7 +237,7 @@ function makeGeminiSinglePassPrompt(fileName: string) {
     makeOcrPrompt(fileName),
     "Analyze the attached image or PDF directly in a single pass.",
     "Preserve positional/layout context when determining field meaning.",
-    "Populate rawText with a faithful OCR-style transcription of the visible document text, preserving line breaks where useful.",
+    "Populate rawText with a faithful OCR-style transcription of the visible document text, preserving line breaks where useful, but omit repeated boilerplate if needed to ensure the JSON completes cleanly.",
     "If there are multiple sections such as a merchant receipt and a card slip, use the merchant receipt as primary and mention ambiguity in warnings.",
     "Use only information visible in the document. If a field is uncertain, set it to null and explain in warnings or confidenceReason.",
   ].join("\n\n");

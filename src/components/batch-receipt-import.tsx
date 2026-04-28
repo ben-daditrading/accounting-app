@@ -141,7 +141,13 @@ export function BatchReceiptImport() {
     [items],
   );
 
-  const readyToSubmit = batch && items.some((item) => item.status === "ready") && unresolvedCount === 0 && batch.status !== "processing";
+  const readyToSubmit = Boolean(
+    batch &&
+    items.length > 0 &&
+    unresolvedCount === 0 &&
+    items.every((item) => ["ready", "deleted", "submitted"].includes(item.status)) &&
+    batch.status !== "processing",
+  );
 
   async function handleUpload(files: FileList | null) {
     if (!files || files.length === 0) return;

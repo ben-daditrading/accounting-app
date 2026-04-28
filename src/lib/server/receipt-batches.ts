@@ -17,6 +17,7 @@ const SUPPORTED_EXTENSIONS = new Set([".pdf", ".png", ".jpg", ".jpeg", ".webp"])
 const PROCESSING_CONCURRENCY = Number(process.env.RECEIPT_BATCH_CONCURRENCY ?? "5");
 const OCR_PROVIDER = process.env.RECEIPT_OCR_PROVIDER?.toLowerCase() ?? "gemini";
 const GEMINI_MODEL = process.env.RECEIPT_OCR_GEMINI_MODEL ?? "gemini-3.1-flash";
+const GEMINI_MAX_OUTPUT_TOKENS = Number(process.env.RECEIPT_OCR_GEMINI_MAX_OUTPUT_TOKENS ?? "2500");
 
 type StoredUpload = {
   name: string;
@@ -249,6 +250,9 @@ async function extractWithGemini(file: StoredUpload) {
 
   const response = await ai.models.generateContent({
     model: GEMINI_MODEL,
+    config: {
+      maxOutputTokens: GEMINI_MAX_OUTPUT_TOKENS,
+    },
     contents: [
       {
         parts: [

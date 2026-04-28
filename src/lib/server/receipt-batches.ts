@@ -227,17 +227,14 @@ function getGeminiClient() {
   return geminiClient;
 }
 
-function makeGeminiTextExtractionPrompt() {
-  return "Extract all text from this image or PDF. Be precise and accurate, preserving line breaks where appropriate. Return only the extracted text.";
-}
-
-function makeGeminiStructuringPrompt(fileName: string, extractedText: string) {
+function makeGeminiSinglePassPrompt(fileName: string) {
   return [
     makeOcrPrompt(fileName),
-    "Below is the OCR text extracted from the source document. Convert it into the requested JSON shape.",
-    "Use only what is supported by the OCR text. If a field is uncertain, set it to null and add a warning.",
-    "OCR text:",
-    extractedText,
+    "Analyze the attached image or PDF directly in a single pass.",
+    "Preserve positional/layout context when determining field meaning.",
+    "Populate rawText with a faithful OCR-style transcription of the visible document text, preserving line breaks where useful.",
+    "If there are multiple sections such as a merchant receipt and a card slip, use the merchant receipt as primary and mention ambiguity in warnings.",
+    "Use only information visible in the document. If a field is uncertain, set it to null and explain in warnings or confidenceReason.",
   ].join("\n\n");
 }
 
@@ -250,48 +247,29 @@ async function extractWithGemini(file: StoredUpload) {
     },
   };
 
-  const ocrResponse = await ai.models.generateContent({
+  const response = await ai.models.generateContent({
     model: GEMINI_MODEL,
     contents: [
       {
         parts: [
           inlineData,
-          { text: makeGeminiTextExtractionPrompt() },
+          { text: makeGeminiSinglePassPrompt(file.name) },
         ],
       },
     ],
   });
 
-  const extractedText = ocrResponse.text?.trim();
-  if (!extractedText) {
+  const text = response.text?.trim();
+  if (!text) {
     throw new Error("Gemini OCR returned empty output");
   }
 
-  const structuredResponse = await ai.models.generateContent({
-    model: GEMINI_MODEL,
-    contents: [
-      {
-        parts: [
-          { text: makeGeminiStructuringPrompt(file.name, extractedText) },
-        ],
-      },
-    ],
-  });
-
-  const structuredText = structuredResponse.text?.trim();
-  if (!structuredText) {
-    throw new Error("Gemini post-processing returned empty output");
-  }
-
-  const json = parseJsonFromText(structuredText) as OcrExtraction;
+  const json = parseJsonFromText(text) as OcrExtraction;
 
   return {
     provider: "gemini",
     model: GEMINI_MODEL,
-    extraction: {
-      ...json,
-      rawText: json.rawText ?? extractedText,
-    },
+    extraction: json,
   };
 }
 

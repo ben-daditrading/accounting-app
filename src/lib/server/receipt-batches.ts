@@ -256,9 +256,23 @@ async function extractWithOpenAI(file: StoredUpload) {
 async function extractWithOpenAIModel(file: StoredUpload, model: string) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("OPENAI_API_KEY is not configured.");
-  if (!file.mimeType.startsWith("image/")) {
-    throw new Error("OpenAI OCR fallback currently supports images only. Configure Gemini for PDFs.");
-  }
+
+  const content = file.mimeType === "application/pdf"
+    ? [
+        { type: "input_text", text: makeOcrPrompt(file.name) },
+        {
+          type: "input_file",
+          filename: file.name,
+          file_data: `data:${file.mimeType};base64,${Buffer.from(file.bytes).toString("base64")}`,
+        },
+      ]
+    : [
+        { type: "input_text", text: makeOcrPrompt(file.name) },
+        {
+          type: "input_image",
+          image_url: `data:${file.mimeType};base64,${Buffer.from(file.bytes).toString("base64")}`,
+        },
+      ];
 
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
@@ -272,13 +286,7 @@ async function extractWithOpenAIModel(file: StoredUpload, model: string) {
       input: [
         {
           role: "user",
-          content: [
-            { type: "input_text", text: makeOcrPrompt(file.name) },
-            {
-              type: "input_image",
-              image_url: `data:${file.mimeType};base64,${Buffer.from(file.bytes).toString("base64")}`,
-            },
-          ],
+          content,
         },
       ],
     }),

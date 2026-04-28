@@ -44,6 +44,12 @@ export default async function TransactionsPage({
         <div className="flex items-center gap-2">
           <DownloadMenu exportQuery={exportQuery} disabled={result.mode !== "database"} />
           <Link
+            href="/transactions/import-batch"
+            className="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+          >
+            Import batch
+          </Link>
+          <Link
             href="/transactions/new"
             className="rounded-lg bg-zinc-950 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
           >

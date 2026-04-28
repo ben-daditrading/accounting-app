@@ -8,6 +8,13 @@
       "when": 1777239888362,
       "tag": "0000_legal_speed",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1777350212429,
+      "tag": "0001_thick_lethal_legion",
+      "breakpoints": true
     }
   ]
 }

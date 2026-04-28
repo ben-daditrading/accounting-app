@@ -128,6 +128,10 @@ function getImportsRoot() {
   return path.join(process.cwd(), "tmp", "receipt-batches");
 }
 
+function getBatchTempDir(batchId: string) {
+  return path.join(getImportsRoot(), batchId);
+}
+
 async function ensureDir(dir: string) {
   await fs.mkdir(dir, { recursive: true });
 }
@@ -146,11 +150,15 @@ function detectMimeType(name: string, fallback?: string) {
 }
 
 async function saveUpload(batchId: string, upload: StoredUpload) {
-  const dir = path.join(getImportsRoot(), batchId);
+  const dir = getBatchTempDir(batchId);
   await ensureDir(dir);
   const filePath = path.join(dir, `${Date.now()}-${safeName(upload.name)}`);
   await fs.writeFile(filePath, upload.bytes);
   return filePath;
+}
+
+async function cleanupBatchTempFiles(batchId: string) {
+  await fs.rm(getBatchTempDir(batchId), { recursive: true, force: true });
 }
 
 function buildSha256(bytes: Uint8Array) {
@@ -975,6 +983,13 @@ export async function submitReceiptBatch(batchId: string) {
   }
 
   await recalculateBatchCounts(batchId);
+  const remaining = await db
+    .select({ status: receiptBatchItems.status })
+    .from(receiptBatchItems)
+    .where(eq(receiptBatchItems.batchId, batchId));
+  if (remaining.every((item) => item.status === "submitted" || item.status === "deleted")) {
+    await cleanupBatchTempFiles(batchId);
+  }
   const summary = await getReceiptBatch(batchId);
   return { summary, results };
 }
@@ -988,7 +1003,15 @@ export async function getReceiptBatchItemFile(itemId: string) {
     .limit(1);
 
   if (!item) return null;
-  const bytes = await fs.readFile(item.sourcePath);
+  let bytes: Buffer;
+  try {
+    bytes = await fs.readFile(item.sourcePath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return null;
+    }
+    throw error;
+  }
   return {
     bytes,
     mimeType: item.mimeType,

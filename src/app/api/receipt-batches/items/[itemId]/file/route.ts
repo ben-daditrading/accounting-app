@@ -16,7 +16,7 @@ export async function GET(
     const file = await getReceiptBatchItemFile(itemId);
     if (!file) return NextResponse.json({ error: "File not found" }, { status: 404 });
 
-    return new Response(file.bytes, {
+    return new Response(new Uint8Array(file.bytes), {
       headers: {
         "Content-Type": file.mimeType,
         "Content-Disposition": `inline; filename="${file.fileName.replace(/\"/g, "")}"`,

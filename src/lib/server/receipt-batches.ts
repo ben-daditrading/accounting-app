@@ -455,10 +455,10 @@ function buildJournalLines(params: {
     memo: `${params.category} expense`,
   });
   if (!params.subtotal) warnings.push("Subtotal missing, full amount posted to main expense line");
-  if (params.tax && gstId) {
+  if (params.tax && Number(params.tax) > 0 && gstId) {
     journalLines.push({ accountId: gstId, drCr: "DR", amount: params.tax, currency: params.currency, amountCad: "", memo: "Receipt tax" });
   }
-  if (params.tip && tipId) {
+  if (params.tip && Number(params.tip) > 0 && tipId) {
     journalLines.push({ accountId: tipId, drCr: "DR", amount: params.tip, currency: params.currency, amountCad: "", memo: "Receipt tip" });
   }
   journalLines.push({

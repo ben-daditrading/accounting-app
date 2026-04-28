@@ -14,9 +14,11 @@ const { receiptBatches, receiptBatchItems, transactions } = schema;
 
 const SUPPORTED_EXTENSIONS = new Set([".pdf", ".png", ".jpg", ".jpeg", ".webp"]);
 const PROCESSING_CONCURRENCY = Number(process.env.RECEIPT_BATCH_CONCURRENCY ?? "5");
-const OCR_PROVIDER = process.env.RECEIPT_OCR_PROVIDER?.toLowerCase() ?? "auto";
+const OCR_PROVIDER = process.env.RECEIPT_OCR_PROVIDER?.toLowerCase() ?? "openai";
 const GEMINI_MODEL = process.env.RECEIPT_OCR_GEMINI_MODEL ?? "gemini-2.5-pro";
-const OPENAI_MODEL = process.env.RECEIPT_OCR_OPENAI_MODEL ?? "gpt-4.1";
+const OPENAI_MODEL = process.env.RECEIPT_OCR_OPENAI_MODEL ?? "gpt-5.4-mini";
+const OPENAI_LOW_CONFIDENCE_MODEL = process.env.RECEIPT_OCR_OPENAI_LOW_CONFIDENCE_MODEL ?? "gpt-5.5";
+const OPENAI_MAX_OUTPUT_TOKENS = Number(process.env.RECEIPT_OCR_OPENAI_MAX_OUTPUT_TOKENS ?? "1200");
 
 type StoredUpload = {
   name: string;
@@ -248,6 +250,10 @@ async function extractWithGemini(file: StoredUpload) {
 }
 
 async function extractWithOpenAI(file: StoredUpload) {
+  return extractWithOpenAIModel(file, OPENAI_MODEL);
+}
+
+async function extractWithOpenAIModel(file: StoredUpload, model: string) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("OPENAI_API_KEY is not configured.");
   if (!file.mimeType.startsWith("image/")) {
@@ -261,7 +267,8 @@ async function extractWithOpenAI(file: StoredUpload) {
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: OPENAI_MODEL,
+      model,
+      max_output_tokens: OPENAI_MAX_OUTPUT_TOKENS,
       input: [
         {
           role: "user",
@@ -287,17 +294,35 @@ async function extractWithOpenAI(file: StoredUpload) {
 
   return {
     provider: "openai",
-    model: OPENAI_MODEL,
+    model,
     extraction: json,
   };
 }
 
+function shouldRetryLowConfidence(extraction: OcrExtraction) {
+  const confidence = extraction.confidenceScore ?? 0;
+  const missingCriticalFields = !normalizeMoney(extraction.totalAmount) || !normalizeDate(extraction.transactDate) || !optionalText(extraction.merchant);
+  return confidence < 0.85 || missingCriticalFields;
+}
+
 async function extractReceipt(file: StoredUpload) {
   if (OCR_PROVIDER === "gemini") return extractWithGemini(file);
-  if (OCR_PROVIDER === "openai") return extractWithOpenAI(file);
+  if (OCR_PROVIDER === "openai") {
+    const firstPass = await extractWithOpenAI(file);
+    if (firstPass.model !== OPENAI_LOW_CONFIDENCE_MODEL && shouldRetryLowConfidence(firstPass.extraction)) {
+      return extractWithOpenAIModel(file, OPENAI_LOW_CONFIDENCE_MODEL);
+    }
+    return firstPass;
+  }
 
+  if (process.env.OPENAI_API_KEY) {
+    const firstPass = await extractWithOpenAI(file);
+    if (firstPass.model !== OPENAI_LOW_CONFIDENCE_MODEL && shouldRetryLowConfidence(firstPass.extraction)) {
+      return extractWithOpenAIModel(file, OPENAI_LOW_CONFIDENCE_MODEL);
+    }
+    return firstPass;
+  }
   if (process.env.GEMINI_API_KEY) return extractWithGemini(file);
-  if (process.env.OPENAI_API_KEY) return extractWithOpenAI(file);
 
   throw new Error("No OCR provider configured. Set GEMINI_API_KEY or OPENAI_API_KEY.");
 }

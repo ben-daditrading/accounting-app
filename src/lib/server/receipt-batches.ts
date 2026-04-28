@@ -16,9 +16,7 @@ const SUPPORTED_EXTENSIONS = new Set([".pdf", ".png", ".jpg", ".jpeg", ".webp"])
 const PROCESSING_CONCURRENCY = Number(process.env.RECEIPT_BATCH_CONCURRENCY ?? "5");
 const OCR_PROVIDER = process.env.RECEIPT_OCR_PROVIDER?.toLowerCase() ?? "openai";
 const OPENAI_MODEL = process.env.RECEIPT_OCR_OPENAI_MODEL ?? "gpt-5.5";
-const OPENAI_LOW_CONFIDENCE_MODEL = process.env.RECEIPT_OCR_OPENAI_LOW_CONFIDENCE_MODEL ?? "gpt-5.5";
-const OPENAI_MAX_OUTPUT_TOKENS = Number(process.env.RECEIPT_OCR_OPENAI_MAX_OUTPUT_TOKENS ?? "3000");
-const OPENAI_PARSE_RETRY_MAX_OUTPUT_TOKENS = Number(process.env.RECEIPT_OCR_OPENAI_PARSE_RETRY_MAX_OUTPUT_TOKENS ?? "5000");
+const OPENAI_MAX_OUTPUT_TOKENS = Number(process.env.RECEIPT_OCR_OPENAI_MAX_OUTPUT_TOKENS ?? "5000");
 
 type StoredUpload = {
   name: string;
@@ -274,10 +272,6 @@ async function extractWithOpenAIModel(file: StoredUpload, model: string, maxOutp
     json = parseJsonFromText(text) as OcrExtraction;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to parse OCR JSON";
-    const canRetryForParse = maxOutputTokens < OPENAI_PARSE_RETRY_MAX_OUTPUT_TOKENS;
-    if (canRetryForParse) {
-      return extractWithOpenAIModel(file, model, OPENAI_PARSE_RETRY_MAX_OUTPUT_TOKENS);
-    }
     throw new Error(`${message}. Model status: ${incompleteReason ?? "unknown"}`);
   }
 
@@ -288,30 +282,16 @@ async function extractWithOpenAIModel(file: StoredUpload, model: string, maxOutp
   };
 }
 
-function shouldRetryLowConfidence(extraction: OcrExtraction) {
-  const confidence = extraction.confidenceScore ?? 0;
-  const missingCriticalFields = !normalizeMoney(extraction.totalAmount) || !normalizeDate(extraction.transactDate) || !optionalText(extraction.merchant);
-  return confidence < 0.85 || missingCriticalFields;
-}
-
 async function extractReceipt(file: StoredUpload) {
   if (OCR_PROVIDER && OCR_PROVIDER !== "openai") {
     throw new Error(`Unsupported OCR provider: ${OCR_PROVIDER}. Use openai.`);
   }
   if (OCR_PROVIDER === "openai") {
-    const firstPass = await extractWithOpenAI(file);
-    if (firstPass.model !== OPENAI_LOW_CONFIDENCE_MODEL && shouldRetryLowConfidence(firstPass.extraction)) {
-      return extractWithOpenAIModel(file, OPENAI_LOW_CONFIDENCE_MODEL, OPENAI_MAX_OUTPUT_TOKENS);
-    }
-    return firstPass;
+    return extractWithOpenAI(file);
   }
 
   if (process.env.OPENAI_API_KEY) {
-    const firstPass = await extractWithOpenAI(file);
-    if (firstPass.model !== OPENAI_LOW_CONFIDENCE_MODEL && shouldRetryLowConfidence(firstPass.extraction)) {
-      return extractWithOpenAIModel(file, OPENAI_LOW_CONFIDENCE_MODEL, OPENAI_MAX_OUTPUT_TOKENS);
-    }
-    return firstPass;
+    return extractWithOpenAI(file);
   }
 
   throw new Error("No OCR provider configured. Set OPENAI_API_KEY.");

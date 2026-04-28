@@ -195,7 +195,7 @@ function makeOcrPrompt(fileName: string) {
     "",
     "FIELD RULES:",
     "- merchant: The business/vendor/store/restaurant/payee NAME only (e.g. \"Red Star Seafood Restaurant\", \"Tim Hortons\", \"Shell Gas Station\"). Never put purchased items, menu listings, or a description of the transaction here. If the receipt has a business name in any language, use the English name if available, otherwise transliterate. If no business name is visible at all, use a short category label (Parking, Dining, Hotel, Grocery, etc.).",
-    "- description: A brief 1-sentence summary of what was purchased or the purpose of the transaction (e.g. \"Dim sum meal for 2 with beer\", \"Parking at downtown lot\", \"Weekly groceries\"). Do NOT repeat the merchant name here unless no other description is possible.",
+    "- description: A very short phrase (3-8 words) summarizing the purchase (e.g. \"dim sum lunch\", \"75 min parking\", \"weekly groceries\", \"2 large coffees\"). Do NOT include the merchant/vendor name — it will be prepended automatically.",
     "- notes: 2-3 sentences of useful accounting context — notable line items, payment details, anything an accountant reviewing this later would find helpful. Do NOT copy the raw receipt text here. This should be analytical, not a transcript.",
     "- rawText: A faithful OCR-style transcription of the visible document text, preserving line breaks where useful. Omit repeated boilerplate if needed. Cap at ~1000 characters; truncation is acceptable.",
     "- transactDate: ISO YYYY-MM-DD format.",
@@ -538,7 +538,8 @@ async function buildDraftFromExtraction(file: StoredUpload, extraction: OcrExtra
   }
   const transactDate = normalizeDate(extraction.transactDate) ?? new Date().toISOString().slice(0, 10);
   const currency = optionalText(extraction.currency)?.toUpperCase() ?? "CAD";
-  const description = rawDescription ?? `${categoryLabel(category)} expense`;
+  const shortDesc = rawDescription ?? `${categoryLabel(category)} expense`;
+  const description = merchant ? `${merchant} - ${shortDesc}` : shortDesc;
   const notes = optionalText(extraction.notes) ?? "Batch import draft";
   const typeId = selectTypeId(typeRows, category);
   const confidenceScore = Math.max(0, Math.min(1, extraction.confidenceScore ?? 0.5));

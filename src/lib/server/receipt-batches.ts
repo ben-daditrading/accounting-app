@@ -197,7 +197,7 @@ function makeOcrPrompt(fileName: string) {
     "- merchant: The business/vendor/store/restaurant/payee NAME only (e.g. \"Red Star Seafood Restaurant\", \"Tim Hortons\", \"Shell Gas Station\"). Never put purchased items, menu listings, or a description of the transaction here. If the receipt has a business name in any language, use the English name if available, otherwise transliterate. If no business name is visible at all, use a short category label (Parking, Dining, Hotel, Grocery, etc.).",
     "- description: A brief 1-sentence summary of what was purchased or the purpose of the transaction (e.g. \"Dim sum meal for 2 with beer\", \"Parking at downtown lot\", \"Weekly groceries\"). Do NOT repeat the merchant name here unless no other description is possible.",
     "- notes: 2-3 sentences of useful accounting context — notable line items, payment details, anything an accountant reviewing this later would find helpful. Do NOT copy the raw receipt text here. This should be analytical, not a transcript.",
-    "- rawText: A faithful but concise transcription of the document text. Include key content (merchant header, line items, totals, footer) but omit repetitive boilerplate, decorative characters, and redundant whitespace. Keep it under 600 characters to avoid output truncation.",
+    "- rawText: A faithful OCR-style transcription of the visible document text, preserving line breaks where useful. Omit repeated boilerplate if needed to ensure the JSON completes cleanly.",
     "- transactDate: ISO YYYY-MM-DD format.",
     "- Money fields (totalAmount, subtotal, tax, tip): strings with exactly 2 decimal places.",
     "- currency: If the receipt shows only $ without specifying USD or another currency, default to CAD.",
@@ -241,7 +241,7 @@ function makeGeminiSinglePassPrompt(fileName: string) {
     makeOcrPrompt(fileName),
     "Analyze the attached image or PDF directly in a single pass. Use only information visible in the document.",
     "If there are multiple sections (e.g. merchant receipt + card slip), use the merchant receipt as primary and mention ambiguity in warnings.",
-    "IMPORTANT: The JSON must be complete and valid. Keep rawText concise (under 600 chars) so the output fits within the token limit. If a field is uncertain, use null and explain in warnings.",
+    "IMPORTANT: The JSON must be complete and valid. If a field is uncertain, use null and explain in warnings.",
   ].join("\n\n");
 }
 

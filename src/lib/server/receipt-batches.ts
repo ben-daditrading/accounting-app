@@ -1,4 +1,5 @@
 import AdmZip from "adm-zip";
+import { GoogleGenAI } from "@google/genai";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { createHash, randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
@@ -14,9 +15,8 @@ const { receiptBatches, receiptBatchItems, transactions } = schema;
 
 const SUPPORTED_EXTENSIONS = new Set([".pdf", ".png", ".jpg", ".jpeg", ".webp"]);
 const PROCESSING_CONCURRENCY = Number(process.env.RECEIPT_BATCH_CONCURRENCY ?? "5");
-const OCR_PROVIDER = process.env.RECEIPT_OCR_PROVIDER?.toLowerCase() ?? "openai";
-const OPENAI_MODEL = process.env.RECEIPT_OCR_OPENAI_MODEL ?? "gpt-5.5";
-const OPENAI_MAX_OUTPUT_TOKENS = Number(process.env.RECEIPT_OCR_OPENAI_MAX_OUTPUT_TOKENS ?? "5000");
+const OCR_PROVIDER = process.env.RECEIPT_OCR_PROVIDER?.toLowerCase() ?? "gemini";
+const GEMINI_MODEL = process.env.RECEIPT_OCR_GEMINI_MODEL ?? "gemini-3.1-flash";
 
 type StoredUpload = {
   name: string;
@@ -123,6 +123,8 @@ declare global {
 const batchWorkers = globalThis.__receiptBatchWorkers ?? new Map<string, Promise<void>>();
 globalThis.__receiptBatchWorkers = batchWorkers;
 
+let geminiClient: GoogleGenAI | null = null;
+
 function getImportsRoot() {
   return path.join(process.cwd(), "tmp", "receipt-batches");
 }
@@ -216,103 +218,89 @@ function makeOcrPrompt(fileName: string) {
   ].join("\n");
 }
 
-async function extractWithOpenAI(file: StoredUpload) {
-  return extractWithOpenAIModel(file, OPENAI_MODEL, OPENAI_MAX_OUTPUT_TOKENS);
-}
-
-function getOpenAIOutputText(payload: any) {
-  if (typeof payload?.output_text === "string" && payload.output_text.trim()) {
-    return payload.output_text;
+function getGeminiClient() {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("GEMINI_API_KEY is not configured.");
+  if (!geminiClient) {
+    geminiClient = new GoogleGenAI({ apiKey });
   }
-
-  const parts = Array.isArray(payload?.output)
-    ? payload.output.flatMap((item: any) =>
-        Array.isArray(item?.content)
-          ? item.content
-              .filter((part: any) => part?.type === "output_text" && typeof part?.text === "string")
-              .map((part: any) => part.text)
-          : [],
-      )
-    : [];
-
-  return parts.join("\n").trim();
+  return geminiClient;
 }
 
-async function extractWithOpenAIModel(file: StoredUpload, model: string, maxOutputTokens: number) {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error("OPENAI_API_KEY is not configured.");
+function makeGeminiTextExtractionPrompt() {
+  return "Extract all text from this image or PDF. Be precise and accurate, preserving line breaks where appropriate. Return only the extracted text.";
+}
 
-  const content = file.mimeType === "application/pdf"
-    ? [
-        { type: "input_text", text: makeOcrPrompt(file.name) },
-        {
-          type: "input_file",
-          filename: file.name,
-          file_data: `data:${file.mimeType};base64,${Buffer.from(file.bytes).toString("base64")}`,
-        },
-      ]
-    : [
-        { type: "input_text", text: makeOcrPrompt(file.name) },
-        {
-          type: "input_image",
-          image_url: `data:${file.mimeType};base64,${Buffer.from(file.bytes).toString("base64")}`,
-        },
-      ];
+function makeGeminiStructuringPrompt(fileName: string, extractedText: string) {
+  return [
+    makeOcrPrompt(fileName),
+    "Below is the OCR text extracted from the source document. Convert it into the requested JSON shape.",
+    "Use only what is supported by the OCR text. If a field is uncertain, set it to null and add a warning.",
+    "OCR text:",
+    extractedText,
+  ].join("\n\n");
+}
 
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
+async function extractWithGemini(file: StoredUpload) {
+  const ai = getGeminiClient();
+  const inlineData = {
+    inlineData: {
+      data: Buffer.from(file.bytes).toString("base64"),
+      mimeType: file.mimeType,
     },
-    body: JSON.stringify({
-      model,
-      max_output_tokens: maxOutputTokens,
-      input: [
-        {
-          role: "user",
-          content,
-        },
-      ],
-    }),
+  };
+
+  const ocrResponse = await ai.models.generateContent({
+    model: GEMINI_MODEL,
+    contents: [
+      {
+        parts: [
+          inlineData,
+          { text: makeGeminiTextExtractionPrompt() },
+        ],
+      },
+    ],
   });
 
-  if (!response.ok) {
-    throw new Error(`OpenAI OCR failed (${response.status})`);
+  const extractedText = ocrResponse.text?.trim();
+  if (!extractedText) {
+    throw new Error("Gemini OCR returned empty output");
   }
 
-  const payload = await response.json();
-  const text = getOpenAIOutputText(payload);
-  const incompleteReason = payload?.incomplete_details?.reason ?? payload?.status;
+  const structuredResponse = await ai.models.generateContent({
+    model: GEMINI_MODEL,
+    contents: [
+      {
+        parts: [
+          { text: makeGeminiStructuringPrompt(file.name, extractedText) },
+        ],
+      },
+    ],
+  });
 
-  let json: OcrExtraction;
-  try {
-    json = parseJsonFromText(text) as OcrExtraction;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to parse OCR JSON";
-    throw new Error(`${message}. Model status: ${incompleteReason ?? "unknown"}`);
+  const structuredText = structuredResponse.text?.trim();
+  if (!structuredText) {
+    throw new Error("Gemini post-processing returned empty output");
   }
+
+  const json = parseJsonFromText(structuredText) as OcrExtraction;
 
   return {
-    provider: "openai",
-    model,
-    extraction: json,
+    provider: "gemini",
+    model: GEMINI_MODEL,
+    extraction: {
+      ...json,
+      rawText: json.rawText ?? extractedText,
+    },
   };
 }
 
 async function extractReceipt(file: StoredUpload) {
-  if (OCR_PROVIDER && OCR_PROVIDER !== "openai") {
-    throw new Error(`Unsupported OCR provider: ${OCR_PROVIDER}. Use openai.`);
-  }
-  if (OCR_PROVIDER === "openai") {
-    return extractWithOpenAI(file);
+  if (OCR_PROVIDER && OCR_PROVIDER !== "gemini") {
+    throw new Error(`Unsupported OCR provider: ${OCR_PROVIDER}. Use gemini.`);
   }
 
-  if (process.env.OPENAI_API_KEY) {
-    return extractWithOpenAI(file);
-  }
-
-  throw new Error("No OCR provider configured. Set OPENAI_API_KEY.");
+  return extractWithGemini(file);
 }
 
 function normalizeMoney(value?: string | number | null) {

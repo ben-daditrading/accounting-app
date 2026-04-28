@@ -2,6 +2,7 @@ import { asc, desc, eq, sql } from "drizzle-orm";
 
 import { normalizeText, optionalText } from "@/lib/accounting/normalize";
 import { getDb, schema } from "@/lib/db";
+import type { TransactionView } from "@/lib/transactions-view";
 import type { TransactionInput } from "@/lib/validation/transaction";
 
 const { accounts, journalLines, transactionTypes, transactions } = schema;
@@ -28,6 +29,7 @@ export async function listTransactions() {
       currency: transactions.currency,
       receiptRef: transactions.receiptRef,
       createdAt: transactions.createdAt,
+      updatedAt: transactions.updatedAt,
     })
     .from(transactions)
     .leftJoin(transactionTypes, eq(transactions.typeId, transactionTypes.typeId))
@@ -69,9 +71,15 @@ export async function listTransactions() {
     linesByTx.set(line.transactId, arr);
   }
 
-  const items = txRows.map((tx) => ({
+  const items: TransactionView[] = txRows.map((tx) => ({
     ...tx,
-    lines: linesByTx.get(tx.transactId) ?? [],
+    createdAt: tx.createdAt?.toISOString() ?? null,
+    updatedAt: tx.updatedAt?.toISOString() ?? null,
+    lines: (linesByTx.get(tx.transactId) ?? []).map((line) => ({
+      ...line,
+      amount: String(line.amount),
+      amountCad: line.amountCad == null ? null : String(line.amountCad),
+    })),
   }));
 
   return {

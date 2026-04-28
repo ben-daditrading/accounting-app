@@ -23,6 +23,8 @@
 # misc
 .DS_Store
 *.pem
+/tmp
+/scripts/import_pdf_legacy*.js
 
 # debug
 npm-debug.log*

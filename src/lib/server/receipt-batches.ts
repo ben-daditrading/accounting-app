@@ -15,7 +15,6 @@ const { receiptBatches, receiptBatchItems, transactions } = schema;
 const SUPPORTED_EXTENSIONS = new Set([".pdf", ".png", ".jpg", ".jpeg", ".webp"]);
 const PROCESSING_CONCURRENCY = Number(process.env.RECEIPT_BATCH_CONCURRENCY ?? "5");
 const OCR_PROVIDER = process.env.RECEIPT_OCR_PROVIDER?.toLowerCase() ?? "openai";
-const GEMINI_MODEL = process.env.RECEIPT_OCR_GEMINI_MODEL ?? "gemini-2.5-pro";
 const OPENAI_MODEL = process.env.RECEIPT_OCR_OPENAI_MODEL ?? "gpt-5.4-mini";
 const OPENAI_LOW_CONFIDENCE_MODEL = process.env.RECEIPT_OCR_OPENAI_LOW_CONFIDENCE_MODEL ?? "gpt-5.5";
 const OPENAI_MAX_OUTPUT_TOKENS = Number(process.env.RECEIPT_OCR_OPENAI_MAX_OUTPUT_TOKENS ?? "1200");
@@ -203,52 +202,6 @@ function makeOcrPrompt(fileName: string) {
   ].join("\n");
 }
 
-async function extractWithGemini(file: StoredUpload) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error("GEMINI_API_KEY is not configured.");
-
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        generationConfig: {
-          responseMimeType: "application/json",
-        },
-        contents: [
-          {
-            role: "user",
-            parts: [
-              { text: makeOcrPrompt(file.name) },
-              {
-                inlineData: {
-                  mimeType: file.mimeType,
-                  data: Buffer.from(file.bytes).toString("base64"),
-                },
-              },
-            ],
-          },
-        ],
-      }),
-    },
-  );
-
-  if (!response.ok) {
-    throw new Error(`Gemini OCR failed (${response.status})`);
-  }
-
-  const payload = await response.json();
-  const text = payload?.candidates?.[0]?.content?.parts?.map((part: { text?: string }) => part.text ?? "").join("\n") ?? "";
-  const json = parseJsonFromText(text) as OcrExtraction;
-
-  return {
-    provider: "gemini",
-    model: GEMINI_MODEL,
-    extraction: json,
-  };
-}
-
 async function extractWithOpenAI(file: StoredUpload) {
   return extractWithOpenAIModel(file, OPENAI_MODEL);
 }
@@ -314,7 +267,9 @@ function shouldRetryLowConfidence(extraction: OcrExtraction) {
 }
 
 async function extractReceipt(file: StoredUpload) {
-  if (OCR_PROVIDER === "gemini") return extractWithGemini(file);
+  if (OCR_PROVIDER && OCR_PROVIDER !== "openai") {
+    throw new Error(`Unsupported OCR provider: ${OCR_PROVIDER}. Use openai.`);
+  }
   if (OCR_PROVIDER === "openai") {
     const firstPass = await extractWithOpenAI(file);
     if (firstPass.model !== OPENAI_LOW_CONFIDENCE_MODEL && shouldRetryLowConfidence(firstPass.extraction)) {
@@ -330,9 +285,8 @@ async function extractReceipt(file: StoredUpload) {
     }
     return firstPass;
   }
-  if (process.env.GEMINI_API_KEY) return extractWithGemini(file);
 
-  throw new Error("No OCR provider configured. Set GEMINI_API_KEY or OPENAI_API_KEY.");
+  throw new Error("No OCR provider configured. Set OPENAI_API_KEY.");
 }
 
 function normalizeMoney(value?: string | number | null) {

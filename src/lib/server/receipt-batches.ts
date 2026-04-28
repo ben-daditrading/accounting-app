@@ -747,6 +747,33 @@ async function processItem(itemId: string) {
   }
 }
 
+export async function reprocessReceiptBatchItem(itemId: string) {
+  const db = getDb();
+  const [item] = await db
+    .select()
+    .from(receiptBatchItems)
+    .where(eq(receiptBatchItems.itemId, itemId))
+    .limit(1);
+
+  if (!item) throw new Error("Receipt batch item not found.");
+  if (item.status === "submitted") throw new Error("Cannot reprocess an already submitted item.");
+
+  await db
+    .update(receiptBatchItems)
+    .set({ status: "processing", colorState: "gray", updatedAt: new Date() })
+    .where(eq(receiptBatchItems.itemId, itemId));
+
+  await processItem(itemId);
+  await recalculateBatchCounts(item.batchId);
+
+  const [updated] = await db
+    .select()
+    .from(receiptBatchItems)
+    .where(eq(receiptBatchItems.itemId, itemId))
+    .limit(1);
+  return itemRowToClient(updated);
+}
+
 async function runBatchWorkers(batchId: string) {
   await recalculateBatchCounts(batchId);
 

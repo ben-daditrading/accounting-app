@@ -192,6 +192,26 @@ export function BatchReceiptImport() {
     await loadBatch(item.batchId);
   }
 
+  const [reprocessing, setReprocessing] = useState<Record<string, boolean>>({});
+
+  async function reprocessItem(item: BatchItem) {
+    setReprocessing((s) => ({ ...s, [item.itemId]: true }));
+    setError(null);
+    try {
+      const res = await fetch(`/api/receipt-batches/items/${item.itemId}/reprocess`, { method: "POST" });
+      const payload = await res.json();
+      if (!res.ok) {
+        setError(payload.error ?? "Failed to reprocess item");
+        return;
+      }
+      await loadBatch(item.batchId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Reprocess failed");
+    } finally {
+      setReprocessing((s) => ({ ...s, [item.itemId]: false }));
+    }
+  }
+
   function updateTransactionField(itemId: string, updater: (transaction: TransactionInput) => TransactionInput) {
     setItems((current) =>
       current.map((item) => {
@@ -330,7 +350,7 @@ export function BatchReceiptImport() {
                     <tr>
                       <th className="px-2 py-2">Status</th>
                       <th className="px-2 py-2">Receipt</th>
-                      <th className="px-2 py-2">Merchant</th>
+
                       <th className="px-2 py-2">Date</th>
                       <th className="px-2 py-2">Currency</th>
                       <th className="px-2 py-2">Total</th>
@@ -356,14 +376,7 @@ export function BatchReceiptImport() {
                               </a>
                               {item.postedReceiptRef ? <div className="mt-1 text-[11px] text-emerald-700">Posted</div> : null}
                             </td>
-                            <td className="px-2 py-2 min-w-[180px]">
-                              <input
-                                className={input}
-                                value={item.ocrJson?.merchant ?? ""}
-                                readOnly
-                                title="Merchant name from OCR (read-only)"
-                              />
-                            </td>
+
                             <td className="px-2 py-2 min-w-[120px]">
                               <input
                                 className={input}
@@ -419,6 +432,9 @@ export function BatchReceiptImport() {
                                 </button>
                                 <button type="button" className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-700 hover:bg-amber-100" onClick={() => saveItem(item, "needs_review")}>
                                   Keep yellow
+                                </button>
+                                <button type="button" className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] text-blue-700 hover:bg-blue-100 disabled:opacity-50" disabled={reprocessing[item.itemId] || item.status === "submitted"} onClick={() => reprocessItem(item)}>
+                                  <RefreshCcw className={`mr-1 inline h-3 w-3${reprocessing[item.itemId] ? " animate-spin" : ""}`} /> Rerun OCR
                                 </button>
                                 <button type="button" className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[11px] text-red-700 hover:bg-red-100" onClick={() => saveItem(item, "deleted")}>
                                   <Trash2 className="mr-1 inline h-3 w-3" /> Delete

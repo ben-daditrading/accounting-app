@@ -198,6 +198,7 @@ function makeOcrPrompt(fileName: string) {
     "Provide numeric money fields as strings with 2 decimals when visible.",
     "merchant means the vendor, store, restaurant, or payee name, not a purchased item or menu/product description.",
     "description should contain the purchased item, short purpose, or receipt summary, not the vendor name unless no better description is visible.",
+    "If no vendor/store/payee name is visible, set merchant to a short category label such as Parking, Transportation, Dining, Hotel, Travel, Grocery, or Purchase.",
     "If the receipt shows only a dollar sign ($) and does not explicitly say USD or another currency, default currency to CAD.",
     "Keep confidenceReason and warnings concise.",
     `Source file: ${fileName}`,
@@ -337,6 +338,51 @@ function classifyCategory(text: string) {
   return "purchase";
 }
 
+function categoryLabel(category: string) {
+  if (category === "meal") return "Dining";
+  if (category === "parking") return "Parking";
+  if (category === "transit") return "Transportation";
+  if (category === "travel") return "Travel";
+  if (category === "grocery") return "Groceries";
+  if (category === "deposit") return "Deposit";
+  return "Purchase";
+}
+
+function looksLikeMerchantLine(line: string) {
+  const value = line.trim();
+  if (!value) return false;
+  const lower = value.toLowerCase();
+  if (value.length < 3 || value.length > 80) return false;
+  if (!/[a-z]/i.test(value)) return false;
+  if (/^\$?[\d\s.,/-]+$/.test(value)) return false;
+  if (/(receipt|thank you|purchase|approved|transaction|auth|terminal|card|visa|mastercard|subtotal|total|tax|tip|change|invoice|merchant copy|cardholder copy)/i.test(lower)) return false;
+  if (/\b(original blend|coffee|large|small|medium|milk|cream|sugar|combo|qty|quantity)\b/i.test(lower)) return false;
+  return true;
+}
+
+function inferMerchantFromRawText(rawText?: string | null) {
+  if (!rawText) return null;
+  const lines = rawText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 12);
+
+  for (const line of lines) {
+    if (looksLikeMerchantLine(line)) {
+      return line;
+    }
+  }
+
+  return null;
+}
+
+function shouldReviewWarning(warning: string) {
+  return /(missing or invalid|inferred or missing|no transaction type mapping|missing expense or payment account mapping|missing deposit account mapping|duplicate|guessed|uncertain|blurry|illegible|ambiguous)/i.test(
+    warning,
+  );
+}
+
 function selectTypeId(typeRows: Awaited<ReturnType<typeof listTransactionTypes>>, category: string) {
   const wanted = category === "deposit" ? "deposit" : "expense";
   return typeRows.find((row) => row.typeName.toLowerCase() === wanted)?.typeId ?? typeRows[0]?.typeId ?? null;
@@ -474,16 +520,25 @@ async function buildDraftFromExtraction(file: StoredUpload, extraction: OcrExtra
   const accountRows = await listAccounts();
   const typeRows = await listTransactionTypes();
   const warnings = [...(extraction.warnings ?? [])];
-  const merchant = optionalText(extraction.merchant) ?? fileStem(file.name);
-  const transactDate = normalizeDate(extraction.transactDate) ?? new Date().toISOString().slice(0, 10);
-  const currency = optionalText(extraction.currency)?.toUpperCase() ?? "CAD";
+  const rawMerchant = optionalText(extraction.merchant);
   const totalAmount = normalizeMoney(extraction.totalAmount);
   const subtotal = normalizeMoney(extraction.subtotal);
   const tax = normalizeMoney(extraction.tax);
   const tip = normalizeMoney(extraction.tip);
-  const description = optionalText(extraction.description) ?? `${merchant} receipt`;
+  const rawDescription = optionalText(extraction.description);
+  const category = classifyCategory([rawMerchant, extraction.documentType, rawDescription, extraction.rawText].filter(Boolean).join(" "));
+  const inferredMerchant = inferMerchantFromRawText(extraction.rawText);
+  let merchant = rawMerchant;
+  if (!merchant || (rawDescription && merchant.toLowerCase() === rawDescription.toLowerCase())) {
+    merchant = inferredMerchant ?? categoryLabel(category);
+    if (!inferredMerchant) {
+      warnings.push("No explicit merchant name found on the document");
+    }
+  }
+  const transactDate = normalizeDate(extraction.transactDate) ?? new Date().toISOString().slice(0, 10);
+  const currency = optionalText(extraction.currency)?.toUpperCase() ?? "CAD";
+  const description = rawDescription ?? `${categoryLabel(category)} expense`;
   const notes = optionalText(extraction.notes) ?? optionalText(extraction.rawText?.slice(0, 500)) ?? "Batch import draft";
-  const category = classifyCategory([merchant, extraction.documentType, description, extraction.rawText].filter(Boolean).join(" "));
   const typeId = selectTypeId(typeRows, category);
   const confidenceScore = Math.max(0, Math.min(1, extraction.confidenceScore ?? 0.5));
 
@@ -504,6 +559,7 @@ async function buildDraftFromExtraction(file: StoredUpload, extraction: OcrExtra
       })
     : { journalLines: [] as JournalLineInput[], warnings: [] as string[] };
   warnings.push(...lineWarnings);
+  const reviewWarnings = warnings.filter(shouldReviewWarning);
 
   const transactId = buildTransactId(transactDate, merchant, usedIds);
   const transaction: TransactionInput = {
@@ -528,7 +584,7 @@ async function buildDraftFromExtraction(file: StoredUpload, extraction: OcrExtra
     status = "error";
   } else if (duplicates.length > 0) {
     status = "duplicate";
-  } else if (warnings.length > 0 || confidenceScore < 0.85) {
+  } else if (reviewWarnings.length > 0 || confidenceScore < 0.85) {
     status = "needs_review";
   }
 

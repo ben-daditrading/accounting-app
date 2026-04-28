@@ -17,7 +17,7 @@ const SUPPORTED_EXTENSIONS = new Set([".pdf", ".png", ".jpg", ".jpeg", ".webp"])
 const PROCESSING_CONCURRENCY = Number(process.env.RECEIPT_BATCH_CONCURRENCY ?? "5");
 const OCR_PROVIDER = process.env.RECEIPT_OCR_PROVIDER?.toLowerCase() ?? "gemini";
 const GEMINI_MODEL = process.env.RECEIPT_OCR_GEMINI_MODEL ?? "gemini-3.1-flash";
-const GEMINI_MAX_OUTPUT_TOKENS = Number(process.env.RECEIPT_OCR_GEMINI_MAX_OUTPUT_TOKENS ?? "2500");
+const GEMINI_MAX_OUTPUT_TOKENS = Number(process.env.RECEIPT_OCR_GEMINI_MAX_OUTPUT_TOKENS ?? "4096");
 
 type StoredUpload = {
   name: string;
@@ -191,16 +191,19 @@ function parseJsonFromText(text: string) {
 
 function makeOcrPrompt(fileName: string) {
   return [
-    "You are extracting structured accounting data from one receipt or small source document.",
-    "Return JSON only.",
-    "Do not invent values. Use null for unknown fields.",
-    "Use ISO date format YYYY-MM-DD when possible.",
-    "Provide numeric money fields as strings with 2 decimals when visible.",
-    "merchant means the vendor, store, restaurant, or payee name, not a purchased item or menu/product description.",
-    "description should contain the purchased item, short purpose, or receipt summary, not the vendor name unless no better description is visible.",
-    "If no vendor/store/payee name is visible, set merchant to a short category label such as Parking, Transportation, Dining, Hotel, Travel, Grocery, or Purchase.",
-    "If the receipt shows only a dollar sign ($) and does not explicitly say USD or another currency, default currency to CAD.",
-    "Keep confidenceReason and warnings concise.",
+    "You are extracting structured accounting data from one receipt or source document. Return JSON only. Do not invent values; use null for unknowns.",
+    "",
+    "FIELD RULES:",
+    "- merchant: The business/vendor/store/restaurant/payee NAME only (e.g. \"Red Star Seafood Restaurant\", \"Tim Hortons\", \"Shell Gas Station\"). Never put purchased items, menu listings, or a description of the transaction here. If the receipt has a business name in any language, use the English name if available, otherwise transliterate. If no business name is visible at all, use a short category label (Parking, Dining, Hotel, Grocery, etc.).",
+    "- description: A brief 1-sentence summary of what was purchased or the purpose of the transaction (e.g. \"Dim sum meal for 2 with beer\", \"Parking at downtown lot\", \"Weekly groceries\"). Do NOT repeat the merchant name here unless no other description is possible.",
+    "- notes: 2-3 sentences of useful accounting context — notable line items, payment details, anything an accountant reviewing this later would find helpful. Do NOT copy the raw receipt text here. This should be analytical, not a transcript.",
+    "- rawText: A faithful but concise transcription of the document text. Include key content (merchant header, line items, totals, footer) but omit repetitive boilerplate, decorative characters, and redundant whitespace. Keep it under 600 characters to avoid output truncation.",
+    "- transactDate: ISO YYYY-MM-DD format.",
+    "- Money fields (totalAmount, subtotal, tax, tip): strings with exactly 2 decimal places.",
+    "- currency: If the receipt shows only $ without specifying USD or another currency, default to CAD.",
+    "- confidenceScore: 0.0-1.0 float.",
+    "- confidenceReason, warnings: keep concise.",
+    "",
     `Source file: ${fileName}`,
     "JSON shape:",
     JSON.stringify({
@@ -236,11 +239,9 @@ function getGeminiClient() {
 function makeGeminiSinglePassPrompt(fileName: string) {
   return [
     makeOcrPrompt(fileName),
-    "Analyze the attached image or PDF directly in a single pass.",
-    "Preserve positional/layout context when determining field meaning.",
-    "Populate rawText with a faithful OCR-style transcription of the visible document text, preserving line breaks where useful, but omit repeated boilerplate if needed to ensure the JSON completes cleanly.",
-    "If there are multiple sections such as a merchant receipt and a card slip, use the merchant receipt as primary and mention ambiguity in warnings.",
-    "Use only information visible in the document. If a field is uncertain, set it to null and explain in warnings or confidenceReason.",
+    "Analyze the attached image or PDF directly in a single pass. Use only information visible in the document.",
+    "If there are multiple sections (e.g. merchant receipt + card slip), use the merchant receipt as primary and mention ambiguity in warnings.",
+    "IMPORTANT: The JSON must be complete and valid. Keep rawText concise (under 600 chars) so the output fits within the token limit. If a field is uncertain, use null and explain in warnings.",
   ].join("\n\n");
 }
 
@@ -538,7 +539,7 @@ async function buildDraftFromExtraction(file: StoredUpload, extraction: OcrExtra
   const transactDate = normalizeDate(extraction.transactDate) ?? new Date().toISOString().slice(0, 10);
   const currency = optionalText(extraction.currency)?.toUpperCase() ?? "CAD";
   const description = rawDescription ?? `${categoryLabel(category)} expense`;
-  const notes = optionalText(extraction.notes) ?? optionalText(extraction.rawText?.slice(0, 500)) ?? "Batch import draft";
+  const notes = optionalText(extraction.notes) ?? "Batch import draft";
   const typeId = selectTypeId(typeRows, category);
   const confidenceScore = Math.max(0, Math.min(1, extraction.confidenceScore ?? 0.5));
 

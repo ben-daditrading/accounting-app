@@ -41,3 +41,8 @@ docker run --rm -p 3000:3000 --env-file .env.local accounting-app
 
 ## Notes
 For this app, Cloudflare Tunnel is preferred over opening host ports directly to the internet.
+
+### 2026-04-30 RLS hardening note
+- RLS was enabled on the accounting tables directly in Postgres using the SQL in `drizzle/0003_enable_rls_accounting.sql`.
+- `drizzle-kit push` failed during schema introspection on the existing database, so the database change was applied manually rather than through Drizzle's normal push flow.
+- Before relying on `npm run db:push` for future production changes, first resolve the Drizzle introspection failure or apply migrations through a reviewed manual SQL path.

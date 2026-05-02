@@ -18,9 +18,9 @@ const label = "mb-1.5 block text-xs font-medium text-zinc-500 uppercase tracking
 type AccountOption = {
   accountId: number;
   accountNumber: string;
+  internalKey?: string | null;
   accountName: string;
-  accountType: string;
-  currency: string;
+  accountDescription?: string | null;
 };
 
 type TypeOption = {
@@ -40,8 +40,8 @@ const defaults: TransactionInput = {
   receiptRef: "",
   notes: "",
   journalLines: [
-    { drCr: "DR", accountId: 0, amount: "", currency: "CAD", amountCad: "", memo: "" },
-    { drCr: "CR", accountId: 0, amount: "", currency: "CAD", amountCad: "", memo: "" },
+    { drCr: "DR", accountId: 0, accountSerial: "", amount: "", currency: "CAD", amountCad: "", memo: "" },
+    { drCr: "CR", accountId: 0, accountSerial: "", amount: "", currency: "CAD", amountCad: "", memo: "" },
   ],
 };
 
@@ -82,7 +82,10 @@ export function TransactionEntryForm() {
     return watchedLines.reduce(
       (acc, l) => {
         const n = Number(l.amount || 0);
-        if (!Number.isNaN(n)) l.drCr === "DR" ? (acc.dr += n) : (acc.cr += n);
+        if (!Number.isNaN(n)) {
+          if (l.drCr === "DR") acc.dr += n;
+          else acc.cr += n;
+        }
         return acc;
       },
       { dr: 0, cr: 0 },
@@ -291,7 +294,7 @@ export function TransactionEntryForm() {
           {lines.fields.map((field, i) => (
             <div
               key={field.id}
-              className="grid items-start gap-2 rounded-lg border border-zinc-100 bg-zinc-50 p-3 sm:grid-cols-[80px_1fr_120px_90px_120px_1fr_36px]"
+              className="grid items-start gap-2 rounded-lg border border-zinc-100 bg-zinc-50 p-3 sm:grid-cols-[80px_1fr_120px_120px_90px_120px_1fr_36px]"
             >
               <select className={input} {...register(`journalLines.${i}.drCr`)}>
                 <option value="DR">DR</option>
@@ -305,6 +308,7 @@ export function TransactionEntryForm() {
                   </option>
                 ))}
               </select>
+              <input className={input} placeholder="Acct serial / last4" {...register(`journalLines.${i}.accountSerial`)} />
               <input className={input} placeholder="Amount" {...register(`journalLines.${i}.amount`)} />
               <select className={input} {...register(`journalLines.${i}.currency`)}>
                 <option value="CAD">CAD</option>
@@ -332,6 +336,7 @@ export function TransactionEntryForm() {
             lines.append({
               drCr: "DR",
               accountId: 0,
+              accountSerial: "",
               amount: "",
               currency: getValues("currency"),
               amountCad: "",

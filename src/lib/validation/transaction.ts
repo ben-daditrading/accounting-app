@@ -8,6 +8,7 @@ const moneyString = z
 
 export const journalLineSchema = z.object({
   accountId: z.number().int().positive("Account is required"),
+  accountSerial: z.string().trim().max(64).optional(),
   drCr: z.enum(["DR", "CR"]),
   amount: moneyString,
   currency: z.string().trim().length(3),
@@ -29,6 +30,7 @@ export const transactionInputSchema = z
     currency: z.string().trim().length(3),
     exchangeRate: z.string().trim().optional(),
     receiptRef: z.string().trim().optional(),
+    statementRef: z.string().trim().optional(),
     notes: z.string().trim().optional(),
     journalLines: z.array(journalLineSchema).min(2, "At least two journal lines are required"),
   })

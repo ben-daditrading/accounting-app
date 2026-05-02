@@ -64,6 +64,37 @@ export async function uploadReceiptToR2(params: {
   };
 }
 
+export async function uploadStatementToR2(params: {
+  batchId: string;
+  fileName: string;
+  mimeType: string;
+  bytes: Uint8Array;
+}) {
+  const bucket = getRequiredEnv("R2_BUCKET");
+  const client = getClient();
+  const safeName = params.fileName.replace(/[^a-zA-Z0-9._-]/g, "-");
+  const objectKey = `statements/${params.batchId}/${Date.now()}-${safeName}`;
+  const checksumSha256 = createHash("sha256").update(params.bytes).digest("hex");
+
+  await client.send(
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: objectKey,
+      Body: params.bytes,
+      ContentType: params.mimeType || "application/octet-stream",
+    }),
+  );
+
+  return {
+    bucket,
+    objectKey,
+    checksumSha256,
+    publicUrl: process.env.R2_PUBLIC_BASE_URL
+      ? `${process.env.R2_PUBLIC_BASE_URL.replace(/\/$/, "")}/${objectKey}`
+      : null,
+  };
+}
+
 export async function getReceiptFromR2(objectKey: string) {
   const bucket = getRequiredEnv("R2_BUCKET");
   const client = getClient();

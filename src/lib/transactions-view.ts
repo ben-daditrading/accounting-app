@@ -6,6 +6,7 @@ export type TransactionLineView = {
   currency: string;
   amountCad: string | null;
   accountId: number;
+  accountSerial: string | null;
   accountName: string | null;
   memo: string | null;
 };
@@ -19,6 +20,7 @@ export type TransactionView = {
   totalAmount: string;
   currency: string;
   receiptRef: string | null;
+  statementRef: string | null;
   createdAt: string | null;
   updatedAt: string | null;
   lines: TransactionLineView[];
@@ -49,6 +51,7 @@ export function filterTransactions(items: TransactionView[], search?: string) {
       tx.totalAmount,
       tx.currency,
       tx.receiptRef,
+      tx.statementRef,
       tx.createdAt,
       tx.updatedAt,
       ...tx.lines.flatMap((line) => [

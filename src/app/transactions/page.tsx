@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowDown, ArrowUp, ArrowUpDown, Download, Paperclip, Search } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Download, FileText, Paperclip, Search } from "lucide-react";
 
 import { listTransactions } from "@/lib/server/transactions";
 import {
@@ -180,13 +180,14 @@ export default async function TransactionsPage({
                     <td className="px-3 py-2 text-right tabular-nums">
                       {formatAmount(tx.totalAmount, isNonCad ? tx.currency : null)}
                     </td>
-                    <td className="px-3 py-2 text-zinc-700">{tx.description}</td>
-                    <td className="px-3 py-2" />
-                    <td className="px-3 py-2" />
-                    <td className="px-3 py-2" />
-                    <td className="px-3 py-2">
-                      <ReceiptLink receiptRef={tx.receiptRef} />
+                    <td className="px-3 py-2 text-zinc-700">
+                      <div>{tx.description}</div>
+                      <SourceLinks receiptRef={tx.receiptRef} statementRef={tx.statementRef} />
                     </td>
+                    <td className="px-3 py-2" />
+                    <td className="px-3 py-2" />
+                    <td className="px-3 py-2" />
+                    <td className="px-3 py-2" />
                   </tr>
                 ) : (
                   tx.lines.map((line, i) => {
@@ -225,7 +226,8 @@ export default async function TransactionsPage({
                               {formatNumber(tx.totalAmount)}
                             </td>
                             <td className="px-3 py-1.5 align-top text-zinc-700" rowSpan={lineCount}>
-                              {tx.description}
+                              <div>{tx.description}</div>
+                              <SourceLinks receiptRef={tx.receiptRef} statementRef={tx.statementRef} />
                             </td>
                           </>
                         ) : null}
@@ -245,7 +247,7 @@ export default async function TransactionsPage({
 
                         {isFirst ? (
                           <td className="px-3 py-1.5 align-top text-center" rowSpan={lineCount}>
-                            <ReceiptLink receiptRef={tx.receiptRef} />
+                            <SourceIcons receiptRef={tx.receiptRef} statementRef={tx.statementRef} />
                           </td>
                         ) : null}
                       </tr>
@@ -356,19 +358,53 @@ function buildQueryString(params: {
   return query.toString();
 }
 
-function ReceiptLink({ receiptRef }: { receiptRef: string | null }) {
-  if (!receiptRef) return null;
+function SourceIcons({ receiptRef, statementRef }: { receiptRef: string | null; statementRef: string | null }) {
+  if (!receiptRef && !statementRef) return null;
 
   return (
-    <a
-      href={receiptRef}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="inline-flex items-center text-zinc-400 hover:text-zinc-700"
-      title="View receipt"
-    >
-      <Paperclip className="h-3.5 w-3.5" />
-    </a>
+    <div className="inline-flex items-center gap-1">
+      {receiptRef ? (
+        <a
+          href={receiptRef}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center text-zinc-400 hover:text-zinc-700"
+          title="View receipt"
+        >
+          <Paperclip className="h-3.5 w-3.5" />
+        </a>
+      ) : null}
+      {statementRef ? (
+        <a
+          href={statementRef}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center text-zinc-400 hover:text-zinc-700"
+          title="View statement"
+        >
+          <FileText className="h-3.5 w-3.5" />
+        </a>
+      ) : null}
+    </div>
+  );
+}
+
+function SourceLinks({ receiptRef, statementRef }: { receiptRef: string | null; statementRef: string | null }) {
+  if (!receiptRef && !statementRef) return null;
+
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
+      {receiptRef ? (
+        <a href={receiptRef} target="_blank" rel="noopener noreferrer" className="underline hover:text-zinc-700">
+          Receipt source
+        </a>
+      ) : null}
+      {statementRef ? (
+        <a href={statementRef} target="_blank" rel="noopener noreferrer" className="underline hover:text-zinc-700">
+          Statement source
+        </a>
+      ) : null}
+    </div>
   );
 }
 

@@ -167,10 +167,6 @@ function buildSha256(bytes: Uint8Array) {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-function fileStem(name: string) {
-  return path.basename(name, path.extname(name));
-}
-
 function parseJsonFromText(text: string) {
   const trimmed = text.trim();
   if (!trimmed) {
@@ -389,16 +385,16 @@ function selectTypeId(typeRows: Awaited<ReturnType<typeof listTransactionTypes>>
   return typeRows.find((row) => row.typeName.toLowerCase() === wanted)?.typeId ?? typeRows[0]?.typeId ?? null;
 }
 
-function findAccountId(accountRows: Awaited<ReturnType<typeof listAccounts>>, accountNumber: string) {
+function findAccountIdByNumber(accountRows: Awaited<ReturnType<typeof listAccounts>>, accountNumber: string) {
   return accountRows.find((row) => row.accountNumber === accountNumber)?.accountId ?? null;
 }
 
-function selectCardAccount(accountRows: Awaited<ReturnType<typeof listAccounts>>, cardLast4?: string | null) {
-  if (cardLast4) {
-    const exact = accountRows.find((row) => row.accountNumber.includes(cardLast4));
-    if (exact) return exact.accountId;
-  }
-  return accountRows.find((row) => row.accountNumber.startsWith("VISA-"))?.accountId ?? null;
+function findAccountIdByInternalKey(accountRows: Awaited<ReturnType<typeof listAccounts>>, internalKey: string) {
+  return accountRows.find((row) => row.internalKey === internalKey)?.accountId ?? null;
+}
+
+function selectCardAccount(accountRows: Awaited<ReturnType<typeof listAccounts>>) {
+  return findAccountIdByInternalKey(accountRows, "CREDIT_CARD_CHARGES");
 }
 
 function buildJournalLines(params: {
@@ -413,22 +409,22 @@ function buildJournalLines(params: {
 }) {
   const warnings: string[] = [];
   const accountMap: Record<string, string | null> = {
-    meal: "MEAL-EXP",
-    parking: "PARKING-EXP",
-    transit: "MISC-EXP",
-    travel: "TRAVEL-EXP",
-    grocery: "GROCERY-EXP",
-    purchase: "MISC-EXP",
+    meal: "8523",
+    parking: "8762",
+    transit: "8762",
+    travel: "8764",
+    grocery: "8000",
+    purchase: "8000",
     deposit: null,
   };
 
   if (params.category === "deposit") {
-    const bankId = findAccountId(params.accountRows, "SCOTIA-DADI");
-    const suspenseId = findAccountId(params.accountRows, params.currency === "USD" ? "IMPORT-SUSP-USD" : "IMPORT-SUSP");
+    const bankId = findAccountIdByInternalKey(params.accountRows, "BANK_ACCOUNT_CAD") ?? findAccountIdByNumber(params.accountRows, "1002");
+    const suspenseId = findAccountIdByNumber(params.accountRows, "1062");
     if (!bankId || !suspenseId) return { journalLines: [] as JournalLineInput[], warnings: ["Missing deposit account mapping"] };
     const journalLines: JournalLineInput[] = [
-      { accountId: bankId, drCr: "DR", amount: params.totalAmount, currency: params.currency, amountCad: "", memo: "Deposit" },
-      { accountId: suspenseId, drCr: "CR", amount: params.totalAmount, currency: params.currency, amountCad: "", memo: "Import suspense" },
+      { accountId: bankId, accountSerial: "", drCr: "DR", amount: params.totalAmount, currency: params.currency, amountCad: "", memo: "Deposit" },
+      { accountId: suspenseId, accountSerial: "", drCr: "CR", amount: params.totalAmount, currency: params.currency, amountCad: "", memo: "Deposit clearing" },
     ];
     return {
       journalLines,
@@ -436,18 +432,22 @@ function buildJournalLines(params: {
     };
   }
 
-  const expenseNumber = accountMap[params.category] ?? "MISC-EXP";
-  const expenseId = findAccountId(params.accountRows, expenseNumber);
-  const cardId = selectCardAccount(params.accountRows, params.cardLast4);
-  const gstId = findAccountId(params.accountRows, "GST-EXP");
-  const tipId = findAccountId(params.accountRows, "TIP-EXP");
+  const expenseNumber = accountMap[params.category] ?? "8000";
+  const expenseId = findAccountIdByNumber(params.accountRows, expenseNumber);
+  const cardId = selectCardAccount(params.accountRows);
+  const gstId = findAccountIdByNumber(params.accountRows, "1066");
+  const tipId = findAccountIdByNumber(params.accountRows, "8523");
   if (!expenseId || !cardId) {
     return { journalLines: [] as JournalLineInput[], warnings: ["Missing expense or payment account mapping"] };
+  }
+  if (params.cardLast4) {
+    warnings.push(`Captured payment instrument serial ${params.cardLast4}`);
   }
 
   const journalLines: JournalLineInput[] = [];
   journalLines.push({
     accountId: expenseId,
+    accountSerial: "",
     drCr: "DR",
     amount: params.subtotal || params.totalAmount,
     currency: params.currency,
@@ -456,13 +456,14 @@ function buildJournalLines(params: {
   });
   if (!params.subtotal) warnings.push("Subtotal missing, full amount posted to main expense line");
   if (params.tax && Number(params.tax) > 0 && gstId) {
-    journalLines.push({ accountId: gstId, drCr: "DR", amount: params.tax, currency: params.currency, amountCad: "", memo: "Receipt tax" });
+    journalLines.push({ accountId: gstId, accountSerial: "", drCr: "DR", amount: params.tax, currency: params.currency, amountCad: "", memo: "Receipt tax" });
   }
   if (params.tip && Number(params.tip) > 0 && tipId) {
-    journalLines.push({ accountId: tipId, drCr: "DR", amount: params.tip, currency: params.currency, amountCad: "", memo: "Receipt tip" });
+    journalLines.push({ accountId: tipId, accountSerial: "", drCr: "DR", amount: params.tip, currency: params.currency, amountCad: "", memo: "Receipt tip" });
   }
   journalLines.push({
     accountId: cardId,
+    accountSerial: params.cardLast4 ?? "",
     drCr: "CR",
     amount: params.totalAmount,
     currency: params.currency,

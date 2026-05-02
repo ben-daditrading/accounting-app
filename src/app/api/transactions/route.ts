@@ -52,7 +52,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const result = await createTransaction(parsed.data, user.email ?? "system");
+    const result = await createTransaction(parsed.data);
     return NextResponse.json(result, { status: 201 });
   } catch (error) {
     console.error("Failed to create transaction", error);

@@ -44,6 +44,7 @@ export async function GET(request: Request) {
           createdAt: tx.createdAt ?? "",
           updatedAt: tx.updatedAt ?? "",
           receiptRef: tx.receiptRef ?? "",
+          statementRef: tx.statementRef ?? "",
           lineNumber: "",
           lineType: "",
           account: "",
@@ -65,6 +66,7 @@ export async function GET(request: Request) {
           createdAt: tx.createdAt ?? "",
           updatedAt: tx.updatedAt ?? "",
           receiptRef: tx.receiptRef ?? "",
+          statementRef: tx.statementRef ?? "",
           lineNumber: line.lineNumber,
           lineType: line.drCr,
           account: line.accountName ?? "",
@@ -120,6 +122,7 @@ type ExportRow = {
   createdAt: string;
   updatedAt: string;
   receiptRef: string;
+  statementRef: string;
   lineNumber: string | number;
   lineType: string;
   account: string;

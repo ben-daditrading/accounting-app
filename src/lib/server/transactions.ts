@@ -5,7 +5,7 @@ import { getDb, schema } from "@/lib/db";
 import type { TransactionView } from "@/lib/transactions-view";
 import type { TransactionInput } from "@/lib/validation/transaction";
 
-const { accounts, journalLines, transactionTypes, transactions } = schema;
+const { chartOfAccounts, journalLines, transactionTypes, transactions } = schema;
 
 export async function listTransactions() {
   if (!process.env.DATABASE_URL) {
@@ -28,6 +28,7 @@ export async function listTransactions() {
       totalAmount: transactions.totalAmount,
       currency: transactions.currency,
       receiptRef: transactions.receiptRef,
+      statementRef: transactions.statementRef,
       createdAt: transactions.createdAt,
       updatedAt: transactions.updatedAt,
     })
@@ -51,11 +52,12 @@ export async function listTransactions() {
       currency: journalLines.currency,
       amountCad: journalLines.amountCad,
       accountId: journalLines.accountId,
-      accountName: accounts.accountName,
+      accountSerial: journalLines.accountSerial,
+      accountName: chartOfAccounts.accountName,
       memo: journalLines.memo,
     })
     .from(journalLines)
-    .leftJoin(accounts, eq(journalLines.accountId, accounts.accountId))
+    .leftJoin(chartOfAccounts, eq(journalLines.accountId, chartOfAccounts.accountId))
     .where(
       txIds.length === 1
         ? eq(journalLines.transactId, txIds[0])
@@ -96,15 +98,15 @@ export async function listAccounts() {
   const db = getDb();
   return db
     .select({
-      accountId: accounts.accountId,
-      accountNumber: accounts.accountNumber,
-      accountName: accounts.accountName,
-      accountType: accounts.accountType,
-      currency: accounts.currency,
+      accountId: chartOfAccounts.accountId,
+      accountNumber: chartOfAccounts.accountNumber,
+      internalKey: chartOfAccounts.internalKey,
+      accountName: chartOfAccounts.accountName,
+      accountDescription: chartOfAccounts.accountDescription,
     })
-    .from(accounts)
-    .where(eq(accounts.isActive, true))
-    .orderBy(accounts.accountName);
+    .from(chartOfAccounts)
+    .where(eq(chartOfAccounts.isActive, true))
+    .orderBy(chartOfAccounts.accountName);
 }
 
 export async function listTransactionTypes() {
@@ -123,7 +125,7 @@ export async function listTransactionTypes() {
     .orderBy(transactionTypes.typeName);
 }
 
-export async function createTransaction(input: TransactionInput, _actor = "system") {
+export async function createTransaction(input: TransactionInput) {
   const db = getDb();
 
   return db.transaction(async (tx) => {
@@ -136,6 +138,7 @@ export async function createTransaction(input: TransactionInput, _actor = "syste
       currency: normalizeText(input.currency),
       exchangeRate: optionalText(input.exchangeRate),
       receiptRef: optionalText(input.receiptRef),
+      statementRef: optionalText(input.statementRef),
       notes: optionalText(input.notes),
     });
 
@@ -143,6 +146,7 @@ export async function createTransaction(input: TransactionInput, _actor = "syste
       transactId: normalizeText(input.transactId),
       lineNumber: index + 1,
       accountId: line.accountId,
+      accountSerial: optionalText(line.accountSerial),
       drCr: line.drCr,
       amount: line.amount,
       currency: normalizeText(line.currency),

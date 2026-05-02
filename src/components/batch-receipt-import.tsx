@@ -50,14 +50,14 @@ const input = "w-full rounded-md border border-zinc-200 bg-white px-2 py-1.5 tex
 const selectInput = input;
 
 function emptyLine() {
-  return { drCr: "DR" as const, accountId: 0, amount: "", currency: "CAD", amountCad: "", memo: "" };
+  return { drCr: "DR" as const, accountId: 0, accountSerial: "", amount: "", currency: "CAD", amountCad: "", memo: "" };
 }
 
 export function BatchReceiptImport() {
   const [batches, setBatches] = useState<BatchSummary[]>([]);
   const [batch, setBatch] = useState<BatchSummary | null>(null);
   const [items, setItems] = useState<BatchItem[]>([]);
-  const [accounts, setAccounts] = useState<Array<{ accountId: number; accountNumber: string; accountName: string }>>([]);
+  const [accounts, setAccounts] = useState<Array<{ accountId: number; accountNumber: string; accountName: string; internalKey?: string | null; accountDescription?: string | null }>>([]);
   const [types, setTypes] = useState<Array<{ typeId: number; typeName: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -454,7 +454,7 @@ export function BatchReceiptImport() {
                                     <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Journal lines</div>
                                     <div className="space-y-2">
                                       {tx.journalLines.map((line, index) => (
-                                        <div key={`${item.itemId}-${index}`} className="grid gap-2 sm:grid-cols-[80px_1fr_110px_90px_1fr_36px]">
+                                        <div key={`${item.itemId}-${index}`} className="grid gap-2 sm:grid-cols-[80px_1fr_140px_110px_90px_1fr_36px]">
                                           <select className={selectInput} value={line.drCr} onChange={(event) => updateTransactionField(item.itemId, (transaction) => ({
                                             ...transaction,
                                             journalLines: transaction.journalLines.map((current, currentIndex) => currentIndex === index ? { ...current, drCr: event.target.value as "DR" | "CR" } : current),
@@ -471,6 +471,10 @@ export function BatchReceiptImport() {
                                               <option key={account.accountId} value={account.accountId}>{account.accountNumber} — {account.accountName}</option>
                                             ))}
                                           </select>
+                                          <input className={input} placeholder="Acct serial / last4" value={line.accountSerial ?? ""} onChange={(event) => updateTransactionField(item.itemId, (transaction) => ({
+                                            ...transaction,
+                                            journalLines: transaction.journalLines.map((current, currentIndex) => currentIndex === index ? { ...current, accountSerial: event.target.value } : current),
+                                          }))} />
                                           <input className={input} value={line.amount} onChange={(event) => updateTransactionField(item.itemId, (transaction) => ({
                                             ...transaction,
                                             journalLines: transaction.journalLines.map((current, currentIndex) => currentIndex === index ? { ...current, amount: event.target.value } : current),

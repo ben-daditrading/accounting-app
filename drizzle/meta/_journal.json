@@ -29,6 +29,34 @@
       "when": 1777518600000,
       "tag": "0003_enable_rls_accounting",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1777757854066,
+      "tag": "0004_chart_of_accounts_and_account_serial",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1777758555913,
+      "tag": "0005_drop_chart_of_accounts_type_and_currency",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1777761324903,
+      "tag": "0006_add_statement_import_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1777762609322,
+      "tag": "0007_add_statement_refs",
+      "breakpoints": true
     }
   ]
 }
